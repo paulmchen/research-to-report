@@ -1,0 +1,6 @@
+{
+  "enabledMcpjsonServers": [
+    "connect-apps"
+  ],
+  "enableAllProjectMcpServers": true
+}

@@ -1,0 +1,78 @@
+Date : 2026-03-13 21:50:18
+Directory : c:\Users\ladmin\Documents\my_workspace\research-to-report
+Total : 42 files,  6370 codes, 136 comments, 1723 blanks, all 8229 lines
+
+Languages
++------------------+------------+------------+------------+------------+------------+
+| language         | files      | code       | comment    | blank      | total      |
++------------------+------------+------------+------------+------------+------------+
+| Markdown         |          5 |      3,781 |          0 |      1,132 |      4,913 |
+| Python           |         34 |      2,532 |        134 |        580 |      3,246 |
+| YAML             |          1 |         37 |          2 |          9 |         48 |
+| pip requirements |          1 |         14 |          0 |          1 |         15 |
+| JSON             |          1 |          6 |          0 |          1 |          7 |
++------------------+------------+------------+------------+------------+------------+
+
+Directories
++----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                                                                 | files      | code       | comment    | blank      | total      |
++----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                                                                    |         42 |      6,370 |        136 |      1,723 |      8,229 |
+| . (Files)                                                                                                            |          3 |        157 |          2 |         57 |        216 |
+| .claude                                                                                                              |          1 |          6 |          0 |          1 |          7 |
+| docs                                                                                                                 |          4 |      3,675 |          0 |      1,085 |      4,760 |
+| docs\plans                                                                                                           |          4 |      3,675 |          0 |      1,085 |      4,760 |
+| src                                                                                                                  |         18 |      1,649 |        109 |        350 |      2,108 |
+| src (Files)                                                                                                          |         15 |      1,562 |         74 |        324 |      1,960 |
+| src\tools                                                                                                            |          3 |         87 |         35 |         26 |        148 |
+| tests                                                                                                                |         16 |        883 |         25 |        230 |      1,138 |
++----------------------------------------------------------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++----------------------------------------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| filename                                                                                                             | language         | code       | comment    | blank      | total      |
++----------------------------------------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\.claude\settings.local.json                                | JSON             |          6 |          0 |          1 |          7 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\README.md                                                  | Markdown         |        106 |          0 |         47 |        153 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\config.yaml                                                | YAML             |         37 |          2 |          9 |         48 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\docs\plans\charts-images-design-2026-03-14.md              | Markdown         |        138 |          0 |         51 |        189 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\docs\plans\charts-images-implementation-2026-03-14.md      | Markdown         |        711 |          0 |        201 |        912 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\docs\plans\research-to-report-design-2026-03-12.md         | Markdown         |        596 |          0 |        147 |        743 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\docs\plans\research-to-report-implementation-2026-03-12.md | Markdown         |      2,230 |          0 |        686 |      2,916 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\requirements.txt                                           | pip requirements |         14 |          0 |          1 |         15 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\__init__.py                                            | Python           |          0 |          0 |          2 |          2 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\approval.py                                            | Python           |         29 |          0 |          6 |         35 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\config.py                                              | Python           |         27 |          3 |         10 |         40 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\email_sender.py                                        | Python           |         90 |          1 |         17 |        108 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\logger.py                                              | Python           |         32 |          0 |         11 |         43 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\main.py                                                | Python           |        159 |          6 |         38 |        203 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\orchestrator.py                                        | Python           |         52 |          0 |         11 |         63 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\pdf_formatter.py                                       | Python           |        468 |         31 |         70 |        569 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\preflight.py                                           | Python           |         64 |          1 |         25 |         90 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\researcher.py                                          | Python           |        121 |          4 |         24 |        149 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\resume.py                                              | Python           |         37 |          0 |          6 |         43 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\scheduler.py                                           | Python           |         70 |          0 |         14 |         84 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\state.py                                               | Python           |         70 |          0 |         27 |         97 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\synthesizer.py                                         | Python           |         49 |          0 |         13 |         62 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\tools\__init__.py                                      | Python           |          0 |          0 |          2 |          2 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\tools\notebooklm_reader.py                             | Python           |         65 |         35 |         17 |        117 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\tools\web_search.py                                    | Python           |         22 |          0 |          7 |         29 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\src\translate_pdf.py                                       | Python           |        294 |         28 |         50 |        372 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\__init__.py                                          | Python           |          0 |          0 |          2 |          2 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_approval.py                                     | Python           |         26 |          0 |          9 |         35 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_config.py                                       | Python           |         62 |          0 |          8 |         70 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_email_sender.py                                 | Python           |         45 |          0 |         11 |         56 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_logger.py                                       | Python           |         62 |          0 |          6 |         68 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_main.py                                         | Python           |         55 |         14 |          8 |         77 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_orchestrator.py                                 | Python           |         77 |          0 |         21 |         98 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_pdf_charts_images.py                            | Python           |        146 |          4 |         47 |        197 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_pdf_formatter.py                                | Python           |         36 |          0 |         15 |         51 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_preflight.py                                    | Python           |         60 |          3 |         17 |         80 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_researcher.py                                   | Python           |         72 |          2 |         21 |         95 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_resume.py                                       | Python           |         43 |          0 |         13 |         56 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_scheduler.py                                    | Python           |         40 |          0 |         11 |         51 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_state.py                                        | Python           |         47 |          0 |         11 |         58 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_synthesizer.py                                  | Python           |         50 |          0 |         13 |         63 |
+| c:\Users\ladmin\Documents\my_workspace\research-to-report\tests\test_tools.py                                        | Python           |         62 |          2 |         17 |         81 |
+| Total                                                                                                                |                  |      6,370 |        136 |      1,723 |      8,229 |
++----------------------------------------------------------------------------------------------------------------------+------------------+------------+------------+------------+------------+

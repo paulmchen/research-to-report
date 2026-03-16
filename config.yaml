@@ -1,0 +1,47 @@
+user_email: chenp02@gmai.com
+output_dir: ./reports
+
+# Report language versions to generate. Supported: en, zh-CN, zh-TW
+# en is always generated. Add zh-CN and/or zh-TW for translated copies.
+languages:
+  - en
+  - zh-CN
+
+agent:
+  default_model: claude-sonnet-4-6
+  max_tokens: 8096
+  max_subtopics: 5          # number of parallel research agents to spawn
+
+email:
+  default_recipients:
+    - chenp02@gmail.com
+  default_cc: []
+
+schedule:
+  enabled: false
+  cron: "0 8 * * MON"
+  timezone: "America/New_York"
+  topics:
+    - "AI industry news"
+
+notebooklm:
+  notebook_ids: ["176a5e31-0401-4f09-9c89-4229c7d6a668"]   # leave empty to use web search only
+
+timeouts:
+  sub_agent_sec: 120
+  synthesis_sec: 180
+  pdf_generation_sec: 60
+  email_delivery_sec: 30
+  total_run_sec: 600
+
+logging:
+  level: INFO
+  log_to_file: true
+  log_file: reports/logs/agent.log
+  max_file_size_mb: 10
+  backup_count: 5
+
+audit:
+  enabled: true
+  log_file: reports/logs/audit.log
+  format: json
