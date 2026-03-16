@@ -1,6 +1,7 @@
-# Research To Report Agent
+Research To Report Agent
+========================
 
-> Turn any research topic into a polished, emailed PDF report — fully automated, with a human-in-the-loop option.
+Turn any research topic into a polished, emailed PDF report — fully automated, with a human-in-the-loop option.
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue)](https://www.python.org/)
