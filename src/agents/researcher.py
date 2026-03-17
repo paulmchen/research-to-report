@@ -9,6 +9,7 @@ from tools.notebooklm_reader import query_notebook
 
 import litellm
 
+litellm.suppress_debug_info = True  # silence "Give Feedback / Get Help" footer spam
 
 _DRY_RUN_STUB = "## [DRY RUN] Stub Findings\n\nThis is a dry-run result. No API calls were made."
 

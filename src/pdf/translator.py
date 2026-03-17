@@ -13,6 +13,8 @@ import sys
 
 import litellm
 import pypdf
+
+litellm.suppress_debug_info = True  # silence "Give Feedback / Get Help" footer spam
 from dotenv import load_dotenv
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor

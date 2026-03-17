@@ -1,7 +1,10 @@
 import json
 import os
+import warnings
 
-from composio.sdk import Composio
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=UserWarning, module="composio_client")
+    from composio.sdk import Composio
 
 
 class EmailError(Exception):
@@ -63,7 +66,6 @@ def _send_via_composio(
         },
         connected_account_id=gmail_account.id,
         user_id=gmail_account.user_id,
-        dangerously_skip_version_check=True,
     )
 
     if not response["successful"]:
