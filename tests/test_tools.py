@@ -2,6 +2,20 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
+def _asyncio_run_mock(return_value=None, side_effect=None):
+    """Side-effect function for patching asyncio.run.
+
+    Closes the coroutine before raising/returning so Python's GC does not emit
+    'RuntimeWarning: coroutine ... was never awaited'.
+    """
+    def _runner(coro):
+        coro.close()
+        if side_effect is not None:
+            raise side_effect
+        return return_value
+    return _runner
+
+
 def test_web_search_returns_results():
     from tools.web_search import web_search
     mock_response = {
@@ -43,7 +57,7 @@ def test_web_search_raises_on_invalid_key():
 def test_notebooklm_reader_returns_sources():
     from tools.notebooklm_reader import query_notebook
     expected = {"name": "NotebookLM (notebook1...)", "content": "Synthesized answer about AI trends"}
-    with patch("asyncio.run", return_value=expected):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(return_value=expected)):
         result = query_notebook("notebook1-uuid", "AI trends")
     assert "NotebookLM" in result["name"]
     assert result["content"] == "Synthesized answer about AI trends"
@@ -51,14 +65,14 @@ def test_notebooklm_reader_returns_sources():
 
 def test_notebooklm_reader_raises_on_not_found():
     from tools.notebooklm_reader import query_notebook, ToolError
-    with patch("asyncio.run", side_effect=Exception("notebook not found")):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=Exception("notebook not found"))):
         with pytest.raises(ToolError, match="ERR-NTB-001"):
             query_notebook("bad-notebook-id", "query")
 
 
 def test_notebooklm_reader_raises_on_permission_denied():
     from tools.notebooklm_reader import query_notebook, ToolError
-    with patch("asyncio.run", side_effect=Exception("MCP server connection failed")):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=Exception("MCP server connection failed"))):
         with pytest.raises(ToolError, match="ERR-NTB-003"):
             query_notebook("notebook-id", "query")
 
@@ -66,7 +80,7 @@ def test_notebooklm_reader_raises_on_permission_denied():
 def test_fetch_notebook_image_returns_none_on_error():
     """Any MCP error must return None — never raise."""
     from tools.notebooklm_reader import fetch_notebook_image
-    with patch("asyncio.run", side_effect=Exception("MCP server error")):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=Exception("MCP server error"))):
         result = fetch_notebook_image("nb-id", "diagram.png")
     assert result is None
 
@@ -75,7 +89,7 @@ def test_fetch_notebook_image_returns_bytes_on_success():
     """When asyncio.run returns bytes (mocked), propagate them."""
     from tools.notebooklm_reader import fetch_notebook_image
     fake_bytes = b'\x89PNG\r\n' + b'\x00' * 20
-    with patch("asyncio.run", return_value=fake_bytes):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(return_value=fake_bytes)):
         result = fetch_notebook_image("nb-id", "diagram.png")
     assert result == fake_bytes
 
@@ -87,7 +101,7 @@ def test_notebooklm_reader_unwraps_exception_group_to_ntb003():
     inner = Exception("MCP server connection failed")
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
 
-    with patch("asyncio.run", side_effect=eg):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=eg)):
         with pytest.raises(ToolError, match="ERR-NTB-003") as exc_info:
             query_notebook("nb-id", "query")
     # The error message must reflect the inner exception, not the ExceptionGroup wrapper
@@ -102,7 +116,7 @@ def test_notebooklm_reader_unwraps_exception_group_to_ntb001():
     inner = Exception("notebook not found: bad-id")
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
 
-    with patch("asyncio.run", side_effect=eg):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=eg)):
         with pytest.raises(ToolError, match="ERR-NTB-001"):
             query_notebook("bad-id", "query")
 
@@ -130,7 +144,7 @@ def test_verify_notebooklm_auth_skips_when_no_ids():
 def test_verify_notebooklm_auth_passes_when_ping_succeeds():
     """verify_notebooklm_auth must not raise when asyncio.run returns without error."""
     from tools.notebooklm_reader import verify_notebooklm_auth
-    with patch("asyncio.run", return_value=None):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(return_value=None)):
         verify_notebooklm_auth(["nb-uuid-1"])  # should not raise
 
 
@@ -138,7 +152,7 @@ def test_verify_notebooklm_auth_raises_auth_error_on_expired_session():
     """verify_notebooklm_auth must raise ERR-AUTH-009 when ping detects auth expiry."""
     from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
     expired = ToolError("[ERR-AUTH-009] NotebookLM authentication expired. Run 'nlm login'...")
-    with patch("asyncio.run", side_effect=expired):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=expired)):
         with pytest.raises(ToolError, match="ERR-AUTH-009") as exc_info:
             verify_notebooklm_auth(["nb-uuid-1"])
     assert "nlm login" in str(exc_info.value)
@@ -147,7 +161,7 @@ def test_verify_notebooklm_auth_raises_auth_error_on_expired_session():
 def test_verify_notebooklm_auth_raises_ntb003_on_server_failure():
     """verify_notebooklm_auth must raise ERR-NTB-003 on MCP startup failure."""
     from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
-    with patch("asyncio.run", side_effect=Exception("Connection refused")):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=Exception("Connection refused"))):
         with pytest.raises(ToolError, match="ERR-NTB-003"):
             verify_notebooklm_auth(["nb-uuid-1"])
 
@@ -159,6 +173,6 @@ def test_verify_notebooklm_auth_unwraps_exception_group_auth_error():
     inner = Exception("Authentication expired. Please re-authenticate.")
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
 
-    with patch("asyncio.run", side_effect=eg):
+    with patch("asyncio.run", side_effect=_asyncio_run_mock(side_effect=eg)):
         with pytest.raises(ToolError, match="ERR-AUTH-009"):
             verify_notebooklm_auth(["nb-uuid-1"])
