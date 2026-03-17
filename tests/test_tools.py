@@ -78,3 +78,87 @@ def test_fetch_notebook_image_returns_bytes_on_success():
     with patch("asyncio.run", return_value=fake_bytes):
         result = fetch_notebook_image("nb-id", "diagram.png")
     assert result == fake_bytes
+
+
+def test_notebooklm_reader_unwraps_exception_group_to_ntb003():
+    """ExceptionGroup from asyncio TaskGroup must be unwrapped; inner error message used."""
+    from tools.notebooklm_reader import query_notebook, ToolError
+
+    inner = Exception("MCP server connection failed")
+    eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
+
+    with patch("asyncio.run", side_effect=eg):
+        with pytest.raises(ToolError, match="ERR-NTB-003") as exc_info:
+            query_notebook("nb-id", "query")
+    # The error message must reflect the inner exception, not the ExceptionGroup wrapper
+    assert "MCP server connection failed" in str(exc_info.value)
+    assert "TaskGroup" not in str(exc_info.value)
+
+
+def test_notebooklm_reader_unwraps_exception_group_to_ntb001():
+    """ExceptionGroup wrapping a 'not found' error must map to ERR-NTB-001."""
+    from tools.notebooklm_reader import query_notebook, ToolError
+
+    inner = Exception("notebook not found: bad-id")
+    eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
+
+    with patch("asyncio.run", side_effect=eg):
+        with pytest.raises(ToolError, match="ERR-NTB-001"):
+            query_notebook("bad-id", "query")
+
+
+def test_unwrap_exception_group_returns_innermost():
+    """_unwrap_exception_group must recurse through nested ExceptionGroups."""
+    from tools.notebooklm_reader import _unwrap_exception_group
+
+    innermost = ValueError("real error")
+    mid = ExceptionGroup("mid", [innermost])
+    outer = ExceptionGroup("outer", [mid])
+
+    result = _unwrap_exception_group(outer)
+    assert result is innermost
+
+
+def test_verify_notebooklm_auth_skips_when_no_ids():
+    """verify_notebooklm_auth must be a no-op when given an empty list."""
+    from tools.notebooklm_reader import verify_notebooklm_auth
+    with patch("asyncio.run") as mock_run:
+        verify_notebooklm_auth([])
+    mock_run.assert_not_called()
+
+
+def test_verify_notebooklm_auth_passes_when_ping_succeeds():
+    """verify_notebooklm_auth must not raise when asyncio.run returns without error."""
+    from tools.notebooklm_reader import verify_notebooklm_auth
+    with patch("asyncio.run", return_value=None):
+        verify_notebooklm_auth(["nb-uuid-1"])  # should not raise
+
+
+def test_verify_notebooklm_auth_raises_auth_error_on_expired_session():
+    """verify_notebooklm_auth must raise ERR-AUTH-009 when ping detects auth expiry."""
+    from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
+    expired = ToolError("[ERR-AUTH-009] NotebookLM authentication expired. Run 'nlm login'...")
+    with patch("asyncio.run", side_effect=expired):
+        with pytest.raises(ToolError, match="ERR-AUTH-009") as exc_info:
+            verify_notebooklm_auth(["nb-uuid-1"])
+    assert "nlm login" in str(exc_info.value)
+
+
+def test_verify_notebooklm_auth_raises_ntb003_on_server_failure():
+    """verify_notebooklm_auth must raise ERR-NTB-003 on MCP startup failure."""
+    from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
+    with patch("asyncio.run", side_effect=Exception("Connection refused")):
+        with pytest.raises(ToolError, match="ERR-NTB-003"):
+            verify_notebooklm_auth(["nb-uuid-1"])
+
+
+def test_verify_notebooklm_auth_unwraps_exception_group_auth_error():
+    """An ExceptionGroup wrapping an auth error must surface as ERR-AUTH-009."""
+    from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
+
+    inner = Exception("Authentication expired. Please re-authenticate.")
+    eg = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
+
+    with patch("asyncio.run", side_effect=eg):
+        with pytest.raises(ToolError, match="ERR-AUTH-009"):
+            verify_notebooklm_auth(["nb-uuid-1"])

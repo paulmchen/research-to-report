@@ -7,7 +7,7 @@ by the saved Chrome browser session managed by notebooklm-mcp-cli.
 
 Setup:
     Install:  uvx install notebooklm-mcp-cli
-    Login:    notebooklm-mcp-cli auth login
+    Login:    nlm login
     The MCP server starts automatically when query_notebook() is called.
 
 Notebook UUID:
@@ -25,8 +25,28 @@ from tools.web_search import ToolError
 
 # Command used to launch the notebooklm-mcp-cli MCP server.
 # Requires `uvx` to be in PATH (installed with uv).
+# The package `notebooklm-mcp-cli` exposes the server as `notebooklm-mcp`,
+# so we must use `uvx --from notebooklm-mcp-cli notebooklm-mcp`.
 _MCP_COMMAND = "uvx"
-_MCP_ARGS = ["notebooklm-mcp-cli"]
+_MCP_ARGS = ["--from", "notebooklm-mcp-cli", "notebooklm-mcp"]
+
+# Phrases that indicate the Chrome/NotebookLM auth session has expired.
+_AUTH_EXPIRED_PHRASES = (
+    "authentication expired",
+    "auth expired",
+    "not authenticated",
+    "please log in",
+    "please sign in",
+    "sign in to",
+    "login required",
+    "re-authenticate",
+    "session expired",
+)
+
+
+def _is_auth_error(msg: str) -> bool:
+    low = msg.lower()
+    return any(phrase in low for phrase in _AUTH_EXPIRED_PHRASES)
 
 
 async def _query_async(notebook_id: str, query: str) -> dict:
@@ -49,9 +69,15 @@ async def _query_async(notebook_id: str, query: str) -> dict:
         data = {"answer": raw}
 
     if data.get("status") == "error":
+        error_detail = data.get("error", raw)
+        if _is_auth_error(error_detail):
+            raise ToolError(
+                f"[ERR-AUTH-009] NotebookLM authentication expired for notebook {notebook_id}. "
+                f"Run 'nlm login' in your terminal to re-authenticate."
+            )
         raise ToolError(
             f"[ERR-NTB-003] NotebookLM MCP error for notebook {notebook_id}: "
-            f"{data.get('error', raw)}"
+            f"{error_detail}"
         )
 
     answer = data.get("answer", raw)
@@ -59,6 +85,17 @@ async def _query_async(notebook_id: str, query: str) -> dict:
         raise ToolError(f"[ERR-NTB-002] No readable sources in notebook: {notebook_id}")
 
     return {"name": f"NotebookLM ({notebook_id[:8]}...)", "content": answer}
+
+
+def _unwrap_exception_group(e: BaseException) -> BaseException:
+    """Unwrap a Python 3.11+ ExceptionGroup/BaseExceptionGroup to its first inner exception.
+
+    When asyncio TaskGroup fails, Python raises ExceptionGroup with the real
+    cause nested inside. Unwrapping gives the actual error message for classification.
+    """
+    while hasattr(e, "exceptions") and getattr(e, "exceptions", None):
+        e = e.exceptions[0]
+    return e
 
 
 def query_notebook(notebook_id: str, query: str) -> dict:
@@ -78,12 +115,71 @@ def query_notebook(notebook_id: str, query: str) -> dict:
     except ToolError:
         raise
     except Exception as e:
-        msg = str(e).lower()
-        if "not found" in msg or "invalid" in msg or "404" in msg:
+        # Unwrap ExceptionGroup (Python 3.11+ asyncio TaskGroup raises this)
+        inner = _unwrap_exception_group(e)
+        msg = str(inner)
+        if _is_auth_error(msg):
             raise ToolError(
-                f"[ERR-NTB-001] NotebookLM notebook not found: {notebook_id} — {e}"
+                f"[ERR-AUTH-009] NotebookLM authentication expired. "
+                f"Run 'nlm login' in your terminal to re-authenticate."
             )
-        raise ToolError(f"[ERR-NTB-003] NotebookLM MCP server error: {e}")
+        if "not found" in msg.lower() or "invalid" in msg.lower() or "404" in msg:
+            raise ToolError(
+                f"[ERR-NTB-001] NotebookLM notebook not found: {notebook_id} — {inner}"
+            )
+        raise ToolError(f"[ERR-NTB-003] NotebookLM MCP server error: {inner}")
+
+
+async def _ping_async(notebook_id: str) -> None:
+    """Minimal MCP query used only to verify auth — result is discarded."""
+    server_params = StdioServerParameters(command=_MCP_COMMAND, args=_MCP_ARGS)
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.call_tool(
+                "notebook_query",
+                {"notebook_id": notebook_id, "query": "ping"},
+            )
+    if result.content:
+        raw = result.content[0].text
+        try:
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            data = {}
+        if data.get("status") == "error":
+            error_detail = data.get("error", raw)
+            if _is_auth_error(error_detail):
+                raise ToolError(
+                    f"[ERR-AUTH-009] NotebookLM authentication expired. "
+                    f"Run 'nlm login' in your terminal to re-authenticate."
+                )
+
+
+def verify_notebooklm_auth(notebook_ids: list[str]) -> None:
+    """Verify NotebookLM authentication is valid before starting a research run.
+
+    Sends a lightweight ping query to the first configured notebook.
+    Raises ToolError with ERR-AUTH-009 if the session has expired, or
+    ERR-NTB-003 if the MCP server fails to start.
+
+    :param notebook_ids: list of notebook UUIDs from config
+    :raises ToolError: ERR-AUTH-009 if auth expired, ERR-NTB-003 on server error
+    """
+    if not notebook_ids:
+        return
+    try:
+        asyncio.run(_ping_async(notebook_ids[0]))
+    except ToolError:
+        raise
+    except Exception as e:
+        inner = _unwrap_exception_group(e)
+        msg = str(inner)
+        if _is_auth_error(msg):
+            raise ToolError(
+                f"[ERR-AUTH-009] NotebookLM authentication expired. "
+                f"Run 'nlm login' in your terminal to re-authenticate."
+            )
+        raise ToolError(f"[ERR-NTB-003] NotebookLM MCP server failed to start: {inner}")
 
 
 async def _fetch_image_async(notebook_id: str, filename: str) -> bytes | None:

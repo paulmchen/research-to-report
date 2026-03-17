@@ -640,7 +640,7 @@ git commit -m "feat: state management — master + subtopic files, heartbeat, re
 - Create: `src/preflight.py`
 - Create: `tests/test_preflight.py`
 
-Pre-flight validates network, API keys, config, and output dirs before any API call. See design doc Section 13 for the exact check order and output format. Raises `PreflightError` with the appropriate error code on failure. `COMPOSIO_API_KEY` is always required (Gmail delivery). When `notebooklm.notebook_ids` is non-empty, the `notebooklm-mcp-cli` MCP server must be running — no extra API key is needed, but a warning is printed if the server appears unreachable.
+Pre-flight validates network, API keys, config, and output dirs before any API call. See design doc Section 13 for the exact check order and output format. Raises `PreflightError` with the appropriate error code on failure. `COMPOSIO_API_KEY` is always required (Gmail delivery). A `check_composio_gmail(cfg)` function verifies the Gmail OAuth connection in Composio is still active (calls `connected_accounts.list()`; no email sent) and raises `PreflightError([ERR-AUTH-008])` with reconnect instructions if missing or the API key is rejected — the Composio API key itself does not expire, but the Gmail OAuth link can be silently revoked. When `notebooklm.notebook_ids` is non-empty, `check_notebooklm(cfg)` calls `verify_notebooklm_auth(notebook_ids)` from `notebooklm_reader.py` which sends a lightweight ping query to the first notebook. If the Chrome session has expired it raises `PreflightError([ERR-AUTH-009])` with an instruction to run `nlm login`.
 
 **Step 1: Write the failing tests**
 
@@ -729,6 +729,59 @@ def test_google_credentials_required_with_notebook_ids():
     with patch.dict(os.environ, env, clear=True):
         with pytest.raises(PreflightError, match="AUTH-004"):
             check_api_keys(cfg)
+
+
+def test_check_composio_gmail_passes_when_gmail_connected():
+    """No error raised when an active Gmail connection exists"""
+    from src.preflight import check_composio_gmail
+    cfg = make_cfg()
+    with patch("src.preflight.Composio") as mock_cls:
+        mock_cls.return_value = _make_composio_mock(has_gmail=True)
+        with patch.dict(os.environ, {"COMPOSIO_API_KEY": "test-key"}):
+            check_composio_gmail(cfg)  # should not raise
+
+
+def test_check_composio_gmail_raises_when_no_gmail_connection():
+    """No active Gmail account raises ERR-AUTH-008 with reconnect hint"""
+    from src.preflight import check_composio_gmail, PreflightError
+    cfg = make_cfg()
+    with patch("src.preflight.Composio") as mock_cls:
+        mock_cls.return_value = _make_composio_mock(has_gmail=False)
+        with patch.dict(os.environ, {"COMPOSIO_API_KEY": "test-key"}):
+            with pytest.raises(PreflightError, match="ERR-AUTH-008"):
+                check_composio_gmail(cfg)
+
+
+def test_check_composio_gmail_raises_on_invalid_api_key():
+    """Invalid Composio API key raises ERR-AUTH-008"""
+    from src.preflight import check_composio_gmail, PreflightError
+    cfg = make_cfg()
+    with patch("src.preflight.Composio", side_effect=Exception("401 Unauthorized")):
+        with patch.dict(os.environ, {"COMPOSIO_API_KEY": "bad-key"}):
+            with pytest.raises(PreflightError, match="ERR-AUTH-008"):
+                check_composio_gmail(cfg)
+
+
+def test_check_composio_gmail_skipped_when_no_api_key():
+    """No-op when COMPOSIO_API_KEY is not set"""
+    from src.preflight import check_composio_gmail
+    cfg = make_cfg()
+    env = {k: v for k, v in os.environ.items() if k != "COMPOSIO_API_KEY"}
+    with patch.dict(os.environ, env, clear=True):
+        check_composio_gmail(cfg)  # should not raise
+
+
+def test_run_preflight_calls_check_composio_gmail():
+    """`run_preflight()` invokes `check_composio_gmail` before research"""
+    from src.preflight import run_preflight
+    cfg = make_cfg()
+    with patch("src.preflight.check_network"), \
+         patch("src.preflight.check_api_keys"), \
+         patch("src.preflight.check_output_dirs"), \
+         patch("src.preflight.check_composio_gmail") as mock_gmail, \
+         patch("src.preflight.check_notebooklm"):
+        run_preflight(cfg)
+        mock_gmail.assert_called_once_with(cfg)
 ```
 
 **Step 2: Run to verify failure**
@@ -831,10 +884,56 @@ def check_output_dirs(cfg: dict) -> None:
             raise PreflightError(f"[ERR-PDF-002] Output directory not writable: {path} — {e}")
 
 
+def check_composio_gmail(cfg: dict) -> None:
+    """Verify the Composio Gmail OAuth connection is active before research starts."""
+    api_key = os.environ.get("COMPOSIO_API_KEY")
+    if not api_key:
+        return  # check_api_keys already caught the missing key case
+    try:
+        composio = Composio(api_key=api_key)
+        accounts = composio._client.connected_accounts.list()
+        gmail_account = next(
+            (a for a in accounts.items if a.toolkit.slug == "gmail" and a.status == "ACTIVE"),
+            None,
+        )
+    except Exception as e:
+        raise PreflightError(
+            f"[ERR-AUTH-008] Composio API key is invalid or unreachable: {e}\n"
+            "  Verify your COMPOSIO_API_KEY at app.composio.dev."
+        )
+    if gmail_account is None:
+        raise PreflightError(
+            "[ERR-AUTH-008] No active Gmail connection found in Composio.\n"
+            "  Connect your Gmail account at app.composio.dev → Apps → Gmail → Connect."
+        )
+
+
+def check_notebooklm(cfg: dict) -> None:
+    notebook_ids = cfg.get("notebooklm", {}).get("notebook_ids", [])
+    if not notebook_ids:
+        return
+    from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
+    try:
+        verify_notebooklm_auth(notebook_ids)
+    except ToolError as e:
+        msg = str(e)
+        if "ERR-AUTH-009" in msg:
+            raise PreflightError(
+                "[ERR-AUTH-009] NotebookLM authentication has expired.\n"
+                "  Run 'nlm login' in your terminal to re-authenticate, then retry."
+            )
+        raise PreflightError(
+            f"[ERR-NTB-003] NotebookLM preflight check failed: {e}\n"
+            "  Ensure 'uvx install notebooklm-mcp-cli' has been run and 'nlm login' is up to date."
+        )
+
+
 def run_preflight(cfg: dict) -> None:
     check_network(cfg)
     check_api_keys(cfg)
     check_output_dirs(cfg)
+    check_composio_gmail(cfg)
+    check_notebooklm(cfg)
 ```
 
 **Step 4: Run tests**
@@ -972,7 +1071,7 @@ git commit -m "feat: Tavily web search tool with AUTH-003/AUTH-005/NET-003 error
 - Create: `src/tools/notebooklm_reader.py`
 - Modify: `tests/test_tools.py` (add tests)
 
-Queries a NotebookLM notebook via the `notebooklm-mcp-cli` MCP server (browser automation). For each subtopic query, calls `notebook_query(notebook_id, query)` which returns an AI-synthesized answer grounded in the notebook's sources. Returns a list of `{"name", "content"}` dicts compatible with the existing researcher pipeline. This module is only called by the researcher when `notebook_ids` is non-empty.
+Queries a NotebookLM notebook via the `notebooklm-mcp-cli` MCP server (browser automation). The package exposes the server as `notebooklm-mcp`; the launch command is `uvx --from notebooklm-mcp-cli notebooklm-mcp`. For each subtopic query, calls `query_notebook(notebook_id, query)` which returns a `{"name", "content"}` dict with the AI-synthesized answer. Auth errors (expired Chrome session) raise `ToolError([ERR-AUTH-009])` — distinct from generic MCP errors `ERR-NTB-003`. Python 3.11+ asyncio `ExceptionGroup` from `TaskGroup` is unwrapped by `_unwrap_exception_group()` before error classification. This module is only called by the researcher when `notebook_ids` is non-empty. `verify_notebooklm_auth(notebook_ids)` is a lightweight preflight probe used by `preflight.py`.
 
 **How it works:** The `notebooklm-mcp-cli` MCP server runs as a separate process (stdio transport), controlling a Chrome browser session logged into NotebookLM. The Python `mcp` client library spawns the server as a subprocess, calls `notebook_query` via JSON-RPC, and gets back a synthesized answer from NotebookLM's AI. No Google service account or API key required — auth is via the saved Chrome browser session.
 
@@ -1032,6 +1131,9 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
 from src.tools.web_search import ToolError
+
+_MCP_COMMAND = "uvx"
+_MCP_ARGS = ["--from", "notebooklm-mcp-cli", "notebooklm-mcp"]
 
 
 def build_drive_service(credentials_path: str = None):

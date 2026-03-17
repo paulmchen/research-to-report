@@ -17,6 +17,8 @@ Research-to-Report is an autonomous agent that does that entire loop for you. Yo
 
 What makes this approach different from a simple "ask ChatGPT to research X" workflow is the architecture. Each research agent works on a narrow slice of the problem, which means they go deeper and stay focused rather than producing shallow summaries. NotebookLM acts as a personal RAG layer on top of general web search — your curated sources get equal weight alongside live web results, so domain-specific knowledge you have already collected is not lost. And because the agents are running in parallel, a topic that might take a person half a day produces a finished report in minutes.
 
+The agent layer is model-agnostic by design. It is built on [LiteLLM](https://github.com/BerriAI/litellm), which means you can point it at Claude, Gemini, GPT-4, or any other supported model by changing a single line in `config.yaml` — no code changes required. You can even assign different models to different roles: a faster, cheaper model for the parallel research agents and a more capable model for final synthesis. The default is Claude, but the architecture does not depend on it.
+
 The human-in-the-loop design is intentional. On ad-hoc runs, you see a preview of the report and approve it before the email is sent — you stay in control of what lands in people's inboxes. Scheduled runs skip the gate and deliver automatically, which works well for recurring briefings where the cadence matters more than per-report review. Both modes write a full audit log, so you always know what was searched, what was found, and when.
 
 ---
@@ -68,13 +70,13 @@ flowchart TD
 ## Prerequisites
 
 
-| Requirement       | Purpose                              | Required?                |
-| ----------------- | ------------------------------------ | ------------------------ |
-| Python 3.11+      | Runtime                              | Yes                      |
-| Anthropic API key | Claude LLM — research and synthesis | Yes                      |
-| Tavily API key    | Web search                           | Yes                      |
-| Composio API key  | Gmail delivery via OAuth             | Yes                      |
-| uv + Chrome       | NotebookLM browser automation        | Only if using NotebookLM |
+| Requirement | Purpose | Required? |
+|---|---|---|
+| Python 3.11+ | Runtime | Yes |
+| LLM provider API key | AI reasoning — research, synthesis, report writing (Claude by default; Gemini and GPT also supported) | Yes — key for your chosen provider |
+| Tavily API key | Web search | Yes |
+| Composio API key | Gmail delivery via OAuth | Yes |
+| uv + Chrome | NotebookLM browser automation | Only if using NotebookLM |
 
 ---
 
@@ -161,13 +163,19 @@ python src/main.py research "your topic here"
 
 Each service the agent talks to requires its own API key. These keys authenticate the agent's requests — they are never shared and should never be committed to version control.
 
-**Anthropic (Claude LLM)**
+**LLM provider**
 
-The agent uses Claude for topic decomposition, research synthesis, and final report writing. Without this key, no AI reasoning happens.
+The agent uses an LLM for topic decomposition, research synthesis, and final report writing. It is model-agnostic — the default is Claude (Anthropic), but you can switch to Gemini, GPT, or any other [LiteLLM-supported model](https://docs.litellm.ai/docs/providers) by changing `agent.default_model` in `config.yaml`.
 
-1. Go to [console.anthropic.com](https://console.anthropic.com)
-2. Navigate to **API Keys** → **Create Key**
-3. Copy the key — it starts with `sk-ant-`
+Get the key for whichever provider you plan to use:
+
+| Provider | Where to get the key | `.env` variable |
+|---|---|---|
+| **Anthropic (Claude)** — default | [console.anthropic.com](https://console.anthropic.com) → API Keys → Create Key | `ANTHROPIC_API_KEY` |
+| **Google (Gemini)** | [aistudio.google.com](https://aistudio.google.com) → Get API Key | `GOOGLE_API_KEY` |
+| **OpenAI (GPT)** | [platform.openai.com](https://platform.openai.com) → API Keys → Create | `OPENAI_API_KEY` |
+
+Only the key for your chosen provider is required. The others can be left unset.
 
 **Tavily (web search)**
 
@@ -194,6 +202,12 @@ The agent sends reports from your Gmail account. Composio handles the OAuth flow
 2. Go to **Apps** → search for **Gmail** → click **Connect**
 3. Complete the Google OAuth flow and authorise the Gmail scopes
 
+> **Connection expiry:** When you start a research run, the agent automatically checks that your Gmail connection in Composio is still active before any research begins. If the connection has been revoked or disconnected you will see:
+> ```
+> [ERR-AUTH-008] No active Gmail connection found in Composio.
+>   Connect your Gmail account at app.composio.dev → Apps → Gmail → Connect.
+> ```
+
 After connecting, every report email will be sent from the Google account you authorised.
 
 ---
@@ -207,7 +221,11 @@ cp .env.example .env
 Open `.env` and fill in the keys you collected in step 2:
 
 ```env
-ANTHROPIC_API_KEY=sk-ant-...
+# LLM provider — set the key for whichever model you configure in config.yaml
+ANTHROPIC_API_KEY=sk-ant-...   # required if using Claude (default)
+# GOOGLE_API_KEY=...           # required if using Gemini
+# OPENAI_API_KEY=...           # required if using GPT
+
 TAVILY_API_KEY=tvly-...
 COMPOSIO_API_KEY=...
 ```
@@ -267,10 +285,16 @@ Restart your terminal after installing so `uvx` is on your PATH.
 
 ```bash
 uvx install notebooklm-mcp-cli
-notebooklm-mcp-cli auth login
+nlm login
 ```
 
-The `auth login` command opens Chrome and prompts you to sign in with your Google account. Complete the sign-in — your session is saved locally and reused on every subsequent run. You only need to do this once (or whenever the session expires).
+The `nlm login` command opens Chrome and prompts you to sign in with your Google account. Complete the sign-in — your session is saved locally and reused on every subsequent run. You only need to do this once (or whenever the session expires — re-run `nlm login` to refresh).
+
+> **Session expiry:** When you start a research run, the agent automatically checks that your NotebookLM session is still valid before any research begins. If the session has expired you will see:
+> ```
+> [ERR-AUTH-009] NotebookLM authentication has expired.
+>   Run 'nlm login' in your terminal to re-authenticate, then retry.
+> ```
 
 **Find your Notebook ID**
 
@@ -365,7 +389,7 @@ python src/pdf/translator.py reports/my-report.pdf --lang zh-CN
 ## Testing
 
 ```bash
-# Run all 89 unit tests (zero API calls made — all external services are mocked)
+# Run all 127 unit tests (zero API calls made — all external services are mocked)
 pytest tests/ -v
 
 # Dry-run smoke test (validates your config without making any API calls)
@@ -396,13 +420,22 @@ research-to-report/
 │   ├── config/                   # Configuration loading
 │   ├── log/                      # Structured logging and run state
 │   └── run/                      # Scheduler, resume, preflight checks
-├── tests/                        # Unit tests (89 tests, zero external calls)
+├── tests/                        # Unit tests (127 tests, zero external calls)
 ├── reports/                      # Generated PDFs and logs (git-ignored)
 ├── docs/plans/                   # Design and implementation docs
+│   ├── research-to-report-design-v1.md        # Architecture, error codes, state schema
+│   └── research-to-report-implementation-v1.md # Task-by-task build plan
 ├── config.yaml
 ├── pyproject.toml
 └── requirements.txt
 ```
+
+### Design and Implementation Docs
+
+| Document | What it covers |
+|---|---|
+| [Design doc](docs/plans/research-to-report-design-v1.md) | System architecture, agent design, state machine, all error codes (ERR/WRN), configuration schema, logging format, testing strategy |
+| [Implementation doc](docs/plans/research-to-report-implementation-v1.md) | Task-by-task build plan with failing tests → implementation → verification steps for every module |
 
 ---
 
