@@ -33,7 +33,7 @@ def start_scheduler(cfg: dict) -> None:
 
     def run_scheduled_topic(topic: str) -> None:
         from agents.orchestrator import decompose_topic, run_parallel_research, OrchestratorError
-        from agents.synthesizer import synthesize, SynthesisError
+        from agents.synthesizer import synthesize, summarize_title, SynthesisError
         from pdf.formatter import generate_pdf, PDFError
         from delivery.email_sender import send_report_email, EmailError
         from log.state import create_master_state, update_master_state
@@ -48,11 +48,12 @@ def start_scheduler(cfg: dict) -> None:
                                   "mode": "scheduled", "topic": topic, "triggered_by": "scheduler"})
         create_master_state(run_id, topic, "scheduled", state_dir)
         try:
+            title = summarize_title(topic, cfg)
             subtopics = decompose_topic(topic, cfg)
             findings = run_parallel_research(run_id, subtopics, cfg, state_dir, dry_run=False)
             report = synthesize(topic, findings, cfg)
             pdf_path = generate_pdf(
-                data={"topic": topic, "run_id": run_id,
+                data={"topic": topic, "title": title, "run_id": run_id,
                       "executive_summary": report["executive_summary"],
                       "full_report": report["full_report"],
                       "generated_at": datetime.now(tz.utc).isoformat()},
@@ -60,7 +61,7 @@ def start_scheduler(cfg: dict) -> None:
             )
             to_list = cfg["email"].get("default_recipients", [])
             cc_list = cfg["email"].get("default_cc", [])
-            send_report_email(pdf_path, topic, to_list, cc_list, audit_path, run_id)
+            send_report_email(pdf_path, topic, to_list, cc_list, audit_path, run_id, title=title)
             write_audit(audit_path, {"event": "EMAIL_SENT", "run_id": run_id, "to": to_list})
             write_audit(audit_path, {"event": "RUN_COMPLETED", "run_id": run_id, "status": "success"})
             update_master_state(run_id, state_dir, {"status": "COMPLETED"})

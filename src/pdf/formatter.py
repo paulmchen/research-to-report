@@ -271,8 +271,16 @@ def _inline_md(text: str) -> str:
     return text
 
 
-def _parse_md_table(table_lines: list, s: dict):
-    """Parse a block of markdown table lines into a ReportLab Table."""
+def _parse_md_table(table_lines: list, s: dict) -> list:
+    """Parse a block of markdown table lines into a list of flowables.
+
+    Normally returns [Spacer, Table, Spacer].
+    Falls back to body-paragraph flowables when any cell exceeds
+    _MAX_CELL_CHARS, preventing a ReportLab LayoutError that occurs when a
+    single cell's Paragraph is taller than the available page frame.
+    """
+    _MAX_CELL_CHARS = 400
+
     rows = []
     for line in table_lines:
         cells = [c.strip() for c in line.strip('|').split('|')]
@@ -282,11 +290,26 @@ def _parse_md_table(table_lines: list, s: dict):
         rows.append(cells)
 
     if not rows:
-        return None
+        return []
 
     col_count = max(len(r) for r in rows)
-    col_width = (6.5 * inch) / col_count
 
+    # If any cell is too long to fit inside a table row without overflowing a
+    # page frame, render the table as structured body text instead.
+    if any(len(cell) > _MAX_CELL_CHARS
+           for row in rows
+           for cell in (row + [''] * (col_count - len(row)))):
+        out = [Spacer(1, 0.06 * inch)]
+        for ri, row in enumerate(rows):
+            padded = row + [''] * (col_count - len(row))
+            style = s['h4'] if ri == 0 else s['body']
+            for cell in padded:
+                if cell:
+                    out.append(Paragraph(_inline_md(cell), style))
+        out.append(Spacer(1, 0.06 * inch))
+        return out
+
+    col_width = (6.5 * inch) / col_count
     data = []
     for ri, row in enumerate(rows):
         # Pad short rows
@@ -305,7 +328,7 @@ def _parse_md_table(table_lines: list, s: dict):
         ('LEFTPADDING',   (0, 0), (-1, -1), 6),
         ('RIGHTPADDING',  (0, 0), (-1, -1), 6),
     ]))
-    return tbl
+    return [Spacer(1, 0.06 * inch), tbl, Spacer(1, 0.06 * inch)]
 
 
 def _md_to_flowables(text: str, s: dict, _tmp_files: list | None = None) -> list:
@@ -400,11 +423,7 @@ def _md_to_flowables(text: str, s: dict, _tmp_files: list | None = None) -> list
             while i < len(lines) and lines[i].strip().startswith('|'):
                 table_lines.append(lines[i].strip())
                 i += 1
-            tbl = _parse_md_table(table_lines, s)
-            if tbl:
-                out.append(Spacer(1, 0.06 * inch))
-                out.append(tbl)
-                out.append(Spacer(1, 0.06 * inch))
+            out.extend(_parse_md_table(table_lines, s))
             continue
 
         # Bullet list (- or *)
@@ -468,11 +487,15 @@ def _strip_leading_h1(text: str) -> str:
     return text
 
 
+_COVER_TITLE_MAX = 120  # chars — beyond this a cover title overflows a page frame
+
+
 def _cover(topic: str, timestamp: str, s: dict) -> list:
     """Navy Table header — self-sizing, so long titles never overlap."""
+    display_topic = topic if len(topic) <= _COVER_TITLE_MAX else topic[:_COVER_TITLE_MAX - 1] + '…'
     tbl = Table(
         [
-            [Paragraph(topic, s['cover_title'])],
+            [Paragraph(display_topic, s['cover_title'])],
             [Spacer(1, 0.15 * inch)],
             [Paragraph('Research Report', s['cover_subtitle'])],
         ],
@@ -523,7 +546,7 @@ def generate_pdf(data: dict, output_dir: str) -> str:
     except OSError as e:
         raise PDFError(f'[ERR-PDF-002] Output directory not writable: {output_dir} — {e}')
 
-    topic     = data['topic']
+    topic     = data.get('title') or data['topic']
     run_id    = data['run_id']
     timestamp = data.get('generated_at', datetime.now(timezone.utc).isoformat())
     filename  = f'{_slug(topic)}-{run_id[:10]}.pdf'

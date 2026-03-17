@@ -1,4 +1,4 @@
-user_email: chenp02@gmai.com
+user_email: you@gmai.com  # sender's email
 output_dir: ./reports
 
 # Report language versions to generate. Supported: en, zh-CN, zh-TW
@@ -14,7 +14,7 @@ agent:
 
 email:
   default_recipients:
-    - chenp02@gmail.com
+    - recipient1@gmail.com
   default_cc: []
 
 schedule:
@@ -25,7 +25,7 @@ schedule:
     - "AI industry news"
 
 notebooklm:
-  notebook_ids: ["176a5e31-0401-4f09-9c89-4229c7d6a668"]   # leave empty to use web search only
+  notebook_ids: ["Your_NodebookLM_Notebook_ID"]   # leave empty to use web search only
 
 timeouts:
   sub_agent_sec: 120

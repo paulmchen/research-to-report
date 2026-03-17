@@ -91,6 +91,6 @@ def find_incomplete_runs(state_dir: str) -> list[dict]:
     for fname in os.listdir(state_dir):
         if fname.startswith("master-") and fname.endswith(".json"):
             state = _read(os.path.join(state_dir, fname))
-            if state.get("status") == "IN_PROGRESS":
+            if state.get("status") in ("IN_PROGRESS", "EMAIL_FAILED"):
                 runs.append(state)
     return runs

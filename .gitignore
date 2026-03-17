@@ -4,5 +4,5 @@ __pycache__/
 reports/logs/*.log
 reports/state/*.json
 reports/*.pdf
-credentials.json
 .VSCodeCounter/
+config.yaml

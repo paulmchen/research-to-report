@@ -1,7 +1,10 @@
 import json
 import os
+import warnings
 
-from composio.sdk import Composio
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=UserWarning, module="composio_client")
+    from composio.sdk import Composio
 
 
 class EmailError(Exception):
@@ -51,6 +54,14 @@ def _send_via_composio(
             "Connect your Gmail account at app.composio.dev → Apps → Gmail → Connect."
         )
 
+    # composio 1.0.0rc10 bug: tools.execute() raises KeyError on the slug for
+    # any non-custom tool because it does _custom_tools[slug] (bare dict access)
+    # before the API retrieve fallback. Pre-populating _tool_schemas skips that
+    # broken path while keeping substitute_file_uploads() active — which is
+    # required to convert the attachment path into a FileUploadable the API accepts.
+    composio.tools._tool_schemas["GMAIL_SEND_EMAIL"] = (
+        composio._client.tools.retrieve(tool_slug="GMAIL_SEND_EMAIL")
+    )
     response = composio.tools.execute(
         slug="GMAIL_SEND_EMAIL",
         arguments={
@@ -63,7 +74,6 @@ def _send_via_composio(
         },
         connected_account_id=gmail_account.id,
         user_id=gmail_account.user_id,
-        dangerously_skip_version_check=True,
     )
 
     if not response["successful"]:
@@ -81,6 +91,7 @@ def send_report_email(
     audit_log_path: str,
     run_id: str,
     api_key: str = None,
+    title: str = None,
 ) -> dict:
     if not to_list:
         raise EmailError(
@@ -92,12 +103,13 @@ def send_report_email(
             f"[ERR-EML-004] Email already sent for run {run_id} — duplicate prevented"
         )
 
+    display = title or topic
     try:
         return _send_via_composio(
             to_list=to_list,
             cc_list=cc_list,
-            subject=f"Research Report: {topic}",
-            body=f"Please find attached the research report on: {topic}",
+            subject=f"Research Report: {display}",
+            body=f"Please find attached the research report on: {display}",
             pdf_paths=pdf_paths,
             api_key=api_key,
         )

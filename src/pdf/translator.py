@@ -13,6 +13,8 @@ import sys
 
 import litellm
 import pypdf
+
+litellm.suppress_debug_info = True  # silence "Give Feedback / Get Help" footer spam
 from dotenv import load_dotenv
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
@@ -307,7 +309,7 @@ def generate_translation(data: dict, language: str, output_dir: str,
     if language not in ("zh-CN", "zh-TW"):
         raise ValueError(f"Unsupported language: {language}. Use zh-CN or zh-TW.")
 
-    topic   = data["topic"]
+    topic   = data.get("title") or data["topic"]
     run_id  = data["run_id"]
     exec_md = data.get("executive_summary", "")
     full_md = data.get("full_report", "")
