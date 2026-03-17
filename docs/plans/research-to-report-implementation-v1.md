@@ -1201,7 +1201,7 @@ git commit -m "feat: NotebookLM reader tool via Google Drive API with NTB error 
 - Create: `src/researcher.py`
 - Create: `tests/test_researcher.py`
 
-Each Research sub-agent receives one subtopic, runs web search (always) + NotebookLM queries (only if `notebook_ids` is non-empty), updates its heartbeat every 10 seconds, writes results to its state file, and returns a markdown findings string. Every external action (web search, NotebookLM query, NotebookLM failure) is written to the audit log via a local `_audit()` helper that appends `run_id` and `subtopic_idx` to each event.
+Each Research sub-agent receives one subtopic, runs web search (always) + NotebookLM queries (only if `notebook_ids` is non-empty), updates its heartbeat every 10 seconds, writes results to its state file, and returns a markdown findings string. Every external action (web search, NotebookLM query, NotebookLM failure) is written to the audit log via a local `_audit()` helper that appends `run_id` and `subtopic_idx` to each event. The audit log records `WEB_SEARCH` (with `results_count` and `total_chars`), `WEB_SEARCH_EMPTY` (warning when Tavily returns zero results), `NOTEBOOKLM_QUERY` (with `content_chars`), `SOURCES_COMBINED` (confirms what content entered the LLM prompt: `web_results_count`, `notebooklm_results_count`, `total_chars`), and `RESEARCH_COMPLETED` (with `findings_chars`) — providing full visibility into what each sub-agent received and passed forward.
 
 **Step 1: Write the failing tests**
 
@@ -1301,6 +1301,34 @@ def test_researcher_dry_run_skips_api_calls(tmp_path):
         mock_llm.assert_not_called()
 
     assert result  # returns stub findings
+
+
+def test_web_search_audit_includes_total_chars(tmp_path):
+    """WEB_SEARCH audit event must include total_chars (sum of all result content lengths)."""
+
+def test_web_search_empty_warning_logged_on_zero_results(tmp_path):
+    """WEB_SEARCH_EMPTY warning event must be logged when Tavily returns zero results."""
+
+def test_web_search_empty_warning_not_logged_when_results_present(tmp_path):
+    """WEB_SEARCH_EMPTY must NOT be logged when results are returned normally."""
+
+def test_sources_combined_logged_with_web_only(tmp_path):
+    """SOURCES_COMBINED must be logged before the LLM call with correct web-only counts."""
+
+def test_sources_combined_logged_with_notebooklm_included(tmp_path):
+    """SOURCES_COMBINED must reflect NotebookLM content when the query succeeds."""
+
+def test_sources_combined_shows_zero_notebooklm_on_failure(tmp_path):
+    """SOURCES_COMBINED must show notebooklm_results_count=0 when NotebookLM query fails."""
+
+def test_notebooklm_query_audit_includes_content_chars(tmp_path):
+    """NOTEBOOKLM_QUERY audit event must include content_chars."""
+
+def test_research_completed_logged_with_findings_chars(tmp_path):
+    """RESEARCH_COMPLETED must be logged after the LLM returns, with findings_chars."""
+
+def test_audit_event_order_is_web_then_notebooklm_then_combined_then_completed(tmp_path):
+    """Events must appear in pipeline order: WEB_SEARCH → NOTEBOOKLM_QUERY → SOURCES_COMBINED → RESEARCH_COMPLETED."""
 ```
 
 **Step 2: Run to verify failure**
@@ -1405,8 +1433,13 @@ def run_research_agent(
         # Web search — always
         query = f"{subtopic} latest research 2026"
         web_results = web_search(query, api_key=api_key)
+        web_total_chars = sum(len(r.get("content", "")) for r in web_results)
         _audit({"event": "WEB_SEARCH", "subtopic": subtopic,
-                "query": query, "results_count": len(web_results)})
+                "query": query, "results_count": len(web_results),
+                "total_chars": web_total_chars})
+        if not web_results:
+            _audit({"event": "WEB_SEARCH_EMPTY", "subtopic": subtopic, "query": query,
+                    "warning": "Tavily returned zero results — LLM will have no web sources for this subtopic"})
         sources_text = "\n\n".join(
             f"**{r['title']}** ({r['url']})\n{r['content']}" for r in web_results
         )
@@ -1419,12 +1452,20 @@ def run_research_agent(
                     result = query_notebook(notebook_id, subtopic)
                     notebook_sections.append(f"**{result['name']}** (NotebookLM)\n{result['content']}")
                     _audit({"event": "NOTEBOOKLM_QUERY", "notebook_id": notebook_id,
-                            "subtopic": subtopic})
+                            "subtopic": subtopic, "content_chars": len(result["content"])})
                 except Exception as e:
                     _audit({"event": "NOTEBOOKLM_QUERY_FAILED", "notebook_id": notebook_id,
                             "subtopic": subtopic, "error": str(e)})
             if notebook_sections:
                 sources_text += "\n\n" + "\n\n".join(notebook_sections)
+
+        _audit({
+            "event": "SOURCES_COMBINED",
+            "subtopic": subtopic,
+            "web_results_count": len(web_results),
+            "notebooklm_results_count": len(notebook_sections),
+            "total_chars": len(sources_text),
+        })
 
         # Synthesize findings with LLM
         prompt = (
@@ -1434,6 +1475,8 @@ def run_research_agent(
             f"Write in professional tone. Include key findings, statistics, and insights."
         )
         findings = litellm_complete(model, [{"role": "user", "content": prompt}], max_tokens)
+        _audit({"event": "RESEARCH_COMPLETED", "subtopic": subtopic,
+                "findings_chars": len(findings)})
 
         update_subtopic_state(run_id, subtopic_idx, state_dir, {
             "status": "COMPLETED",

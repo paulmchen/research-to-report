@@ -531,9 +531,11 @@ Structured JSON, one entry per line, append-only. Records every external action:
 
 ```json
 {"timestamp": "2026-03-12T08:00:01Z", "event": "RUN_STARTED", "mode": "scheduled", "topic": "AI trends in healthcare", "triggered_by": "scheduler"}
-{"timestamp": "2026-03-12T08:00:03Z", "event": "WEB_SEARCH", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "subtopic": "AI healthcare market trends", "query": "AI healthcare market trends latest research 2026", "results_count": 5}
+{"timestamp": "2026-03-12T08:00:03Z", "event": "WEB_SEARCH", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "subtopic": "AI healthcare market trends", "query": "AI healthcare market trends latest research 2026", "results_count": 5, "total_chars": 8420}
 {"timestamp": "2026-03-12T08:00:05Z", "event": "WEB_SEARCH", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 2, "subtopic": "regulatory landscape", "query": "regulatory landscape latest research 2026", "results_count": 4}
-{"timestamp": "2026-03-12T08:00:10Z", "event": "NOTEBOOKLM_QUERY", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "AI healthcare market trends"}
+{"timestamp": "2026-03-12T08:00:10Z", "event": "NOTEBOOKLM_QUERY", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "AI healthcare market trends", "content_chars": 3842}
+{"timestamp": "2026-03-12T08:00:11Z", "event": "SOURCES_COMBINED", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "subtopic": "AI healthcare market trends", "web_results_count": 5, "notebooklm_results_count": 1, "total_chars": 12640}
+{"timestamp": "2026-03-12T08:00:35Z", "event": "RESEARCH_COMPLETED", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "subtopic": "AI healthcare market trends", "findings_chars": 4210}
 {"timestamp": "2026-03-12T08:00:12Z", "event": "NOTEBOOKLM_QUERY_FAILED", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 2, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "regulatory landscape", "error": "[ERR-AUTH-009] NotebookLM authentication expired. Run 'nlm login' in your terminal to re-authenticate."}
 {"timestamp": "2026-03-12T08:00:45Z", "event": "REPORT_GENERATED", "filename": "2026-03-12-ai-healthcare.pdf", "size_kb": 284}
 {"timestamp": "2026-03-12T08:00:46Z", "event": "APPROVAL_REQUESTED", "mode": "ad-hoc"}
@@ -546,9 +548,12 @@ Structured JSON, one entry per line, append-only. Records every external action:
 
 | Event | Fields | When |
 |---|---|---|
-| `WEB_SEARCH` | `run_id`, `subtopic_idx`, `subtopic`, `query`, `results_count` | After every web search |
-| `NOTEBOOKLM_QUERY` | `run_id`, `subtopic_idx`, `notebook_id`, `subtopic` | After a successful NotebookLM query |
+| `WEB_SEARCH` | `run_id`, `subtopic_idx`, `subtopic`, `query`, `results_count`, `total_chars` | After every web search |
+| `WEB_SEARCH_EMPTY` | `run_id`, `subtopic_idx`, `subtopic`, `query`, `warning` | When Tavily returns zero results (non-fatal — run continues with no web sources for this subtopic) |
+| `NOTEBOOKLM_QUERY` | `run_id`, `subtopic_idx`, `notebook_id`, `subtopic`, `content_chars` | After a successful NotebookLM query |
 | `NOTEBOOKLM_QUERY_FAILED` | `run_id`, `subtopic_idx`, `notebook_id`, `subtopic`, `error` | After a failed NotebookLM query (non-fatal — run continues) |
+| `SOURCES_COMBINED` | `run_id`, `subtopic_idx`, `subtopic`, `web_results_count`, `notebooklm_results_count`, `total_chars` | After sources are assembled and before the LLM prompt is sent — confirms what content (web + NotebookLM) actually entered the prompt |
+| `RESEARCH_COMPLETED` | `run_id`, `subtopic_idx`, `subtopic`, `findings_chars` | After the LLM returns the research brief — confirms the agent produced output |
 
 Audit log cannot be disabled. If `enabled: false` is set in config:
 ```
@@ -839,6 +844,15 @@ Dry-run Mode
 | `test_researcher_calls_notebooklm_when_configured` | Each configured notebook ID triggers one `query_notebook` call |
 | `test_researcher_writes_state_file` | Sub-agent writes COMPLETED state with result to its state file |
 | `test_researcher_dry_run_skips_api_calls` | `--dry-run` returns stub without calling web_search or LLM |
+| `test_web_search_audit_includes_total_chars` | `WEB_SEARCH` audit event includes `total_chars` (sum of all result content lengths) |
+| `test_web_search_empty_warning_logged_on_zero_results` | `WEB_SEARCH_EMPTY` warning event is logged when Tavily returns no results |
+| `test_web_search_empty_warning_not_logged_when_results_present` | `WEB_SEARCH_EMPTY` is not logged when results are returned normally |
+| `test_sources_combined_logged_with_web_only` | `SOURCES_COMBINED` is logged with correct counts when NotebookLM is not configured |
+| `test_sources_combined_logged_with_notebooklm_included` | `SOURCES_COMBINED` reflects NotebookLM content when the query succeeds |
+| `test_sources_combined_shows_zero_notebooklm_on_failure` | `SOURCES_COMBINED` shows `notebooklm_results_count: 0` when NotebookLM query fails |
+| `test_notebooklm_query_audit_includes_content_chars` | `NOTEBOOKLM_QUERY` audit event includes `content_chars` |
+| `test_research_completed_logged_with_findings_chars` | `RESEARCH_COMPLETED` is logged after the LLM returns with `findings_chars` |
+| `test_audit_event_order_is_web_then_notebooklm_then_combined_then_completed` | Audit events appear in pipeline order: `WEB_SEARCH` → `NOTEBOOKLM_QUERY` → `SOURCES_COMBINED` → `RESEARCH_COMPLETED` |
 
 #### `tests/test_synthesizer.py`
 | Test | Goal |
