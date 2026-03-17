@@ -45,13 +45,14 @@ Gmail delivery + local file save
 
 ## Prerequisites
 
-| Requirement | Purpose | Required? |
-|---|---|---|
-| Python 3.11+ | Runtime | Yes |
-| Anthropic API key | Claude LLM — research and synthesis | Yes |
-| Tavily API key | Web search | Yes |
-| Composio API key | Gmail delivery via OAuth | Yes |
-| Google service account | NotebookLM access | Only if using NotebookLM |
+
+| Requirement       | Purpose                              | Required?                |
+| ----------------- | ------------------------------------ | ------------------------ |
+| Python 3.11+      | Runtime                              | Yes                      |
+| Anthropic API key | Claude LLM — research and synthesis | Yes                      |
+| Tavily API key    | Web search                           | Yes                      |
+| Composio API key  | Gmail delivery via OAuth             | Yes                      |
+| uv + Chrome       | NotebookLM browser automation        | Only if using NotebookLM |
 
 ---
 
@@ -60,6 +61,7 @@ Gmail delivery + local file save
 ### 1. Install dependencies
 
 ```bash
+cd research-to-report/
 pip install -r requirements.txt
 pip install -e .
 ```
@@ -72,6 +74,7 @@ pip install -e .
 <summary>Windows</summary>
 
 Find your Scripts folder:
+
 ```powershell
 python -m site --user-base
 # Returns something like: C:\Users\YourName\AppData\Roaming\Python
@@ -79,6 +82,7 @@ python -m site --user-base
 ```
 
 Add it to your user PATH permanently (run in PowerShell, then restart your terminal):
+
 ```powershell
 [Environment]::SetEnvironmentVariable(
     "PATH",
@@ -95,6 +99,7 @@ Alternatively, add it via **System Properties → Advanced → Environment Varia
 <summary>macOS</summary>
 
 Find your bin folder:
+
 ```bash
 python3 -m site --user-base
 # Returns something like: /Users/yourname/Library/Python/3.11
@@ -102,6 +107,7 @@ python3 -m site --user-base
 ```
 
 Add it permanently (append to `~/.zshrc` or `~/.bash_profile`, then restart your terminal):
+
 ```bash
 export PATH="$HOME/Library/Python/3.11/bin:$PATH"
 ```
@@ -114,6 +120,7 @@ export PATH="$HOME/Library/Python/3.11/bin:$PATH"
 pip places user-installed binaries in `~/.local/bin` by default.
 
 Add it permanently (append to `~/.bashrc` or `~/.zshrc`, then restart your terminal):
+
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 ```
@@ -121,6 +128,7 @@ export PATH="$HOME/.local/bin:$PATH"
 </details>
 
 If you prefer not to install the binary at all, you can always run the agent directly:
+
 ```bash
 python src/main.py research "your topic here"
 ```
@@ -129,7 +137,7 @@ python src/main.py research "your topic here"
 
 ### 2. Get your API keys
 
-Each service the agent talks to requires its own API key. These keys authenticate the agent's requests and are billed to your account — they are never shared and should never be committed to version control.
+Each service the agent talks to requires its own API key. These keys authenticate the agent's requests — they are never shared and should never be committed to version control.
 
 **Anthropic (Claude LLM)**
 
@@ -188,17 +196,77 @@ This file is loaded at startup. It is listed in `.gitignore` — never commit it
 
 ### 5. Configure recipients
 
-Open `config.yaml` and set who receives every report:
+```bash
+cp config.yaml.example config.yaml
+```
+
+Open `config.yaml` and set your own sender's email and who receives every report:
 
 ```yaml
+user_email: you@gmai.com
+...
+
 email:
   default_recipients:
-    - you@gmail.com
+    - recipient1@gmail.com
     - colleague@company.com
   default_cc: []
 ```
 
 You can override recipients at run time with `--email` and `--email-cc` flags (see Usage below).
+
+Optionally, you can enable NotebookLM by specifying your Notebook IDs — see **step 6** below for how to set that up.
+
+---
+
+### 6. Set up NotebookLM CLI (optional)
+
+Skip this step if you do not plan to use NotebookLM as a knowledge source.
+
+The agent queries NotebookLM via [`notebooklm-mcp-cli`](https://github.com/nmsn/notebooklm-mcp-cli), which drives a Chrome browser session. No Google service account or API key is required — authentication is handled entirely through the browser.
+
+**Prerequisites:** Chrome must be installed on the machine where the agent runs.
+
+**Install `uv` (if not already installed)**
+
+`notebooklm-mcp-cli` is distributed via `uvx`, which is part of [`uv`](https://docs.astral.sh/uv/). If you do not have `uv`:
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+Restart your terminal after installing so `uvx` is on your PATH.
+
+**Install and authenticate notebooklm-mcp-cli**
+
+```bash
+uvx install notebooklm-mcp-cli
+notebooklm-mcp-cli auth login
+```
+
+The `auth login` command opens Chrome and prompts you to sign in with your Google account. Complete the sign-in — your session is saved locally and reused on every subsequent run. You only need to do this once (or whenever the session expires).
+
+**Find your Notebook ID**
+
+Open [notebooklm.google.com](https://notebooklm.google.com) and navigate to the notebook you want to use. Copy the UUID from the URL:
+
+```
+https://notebooklm.google.com/notebooklm?notebook=<YOUR-NOTEBOOK-UUID>
+```
+
+**Add the Notebook ID to config.yaml**
+
+```yaml
+notebooklm:
+  notebook_ids:
+    - YOUR-NOTEBOOK-UUID
+```
+
+You can add multiple IDs. Leave the list empty (`[]`) to use web search only.
 
 ---
 
@@ -227,14 +295,15 @@ research-report resume
 
 Edit `config.yaml` to control agent behaviour. Key settings:
 
-| Setting | Default | Notes |
-|---|---|---|
-| `agent.default_model` | `claude-sonnet-4-6` | Any LiteLLM-supported model (Claude, Gemini, GPT-4, etc.) |
-| `agent.max_subtopics` | `5` | Number of parallel research agents to spawn |
-| `languages` | `[en]` | Report language versions to generate |
-| `notebooklm.notebook_ids` | `[]` | Leave empty for web-only research |
-| `schedule.enabled` | `false` | Set `true` to enable cron runs |
-| `email.default_recipients` | `[]` | Who receives every report |
+
+| Setting                    | Default             | Notes                                                     |
+| -------------------------- | ------------------- | --------------------------------------------------------- |
+| `agent.default_model`      | `claude-sonnet-4-6` | Any LiteLLM-supported model (Claude, Gemini, GPT-4, etc.) |
+| `agent.max_subtopics`      | `5`                 | Number of parallel research agents to spawn               |
+| `languages`                | `[en]`              | Report language versions to generate                      |
+| `notebooklm.notebook_ids`  | `[]`                | Leave empty for web-only research                         |
+| `schedule.enabled`         | `false`             | Set`true` to enable cron runs                             |
+| `email.default_recipients` | `[]`                | Who receives every report                                 |
 
 ### Using NotebookLM as a personal knowledge source
 
@@ -248,7 +317,7 @@ notebooklm:
     - your-notebook-id-here
 ```
 
-Leave this list empty to use web search only. The `notebooklm-mcp-cli` package (included in requirements) handles the connection via browser automation — Chrome must be installed.
+Leave this list empty to use web search only. See **Setup → step 6** for full installation and authentication instructions.
 
 ### Multi-language reports
 
@@ -264,6 +333,7 @@ languages:
 Each language produces a separate PDF file. Only the English version is emailed; translated PDFs are saved locally.
 
 To translate an existing PDF manually:
+
 ```bash
 python src/pdf/translator.py reports/my-report.pdf --lang zh-CN
 ```
