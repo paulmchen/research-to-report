@@ -23,22 +23,44 @@ The human-in-the-loop design is intentional. On ad-hoc runs, you see a preview o
 
 ## How It Works
 
-```
-You provide a topic
-        ↓
-Orchestrator decomposes it into N subtopics
-        ↓
-N Research Agents run in parallel
-  ├── Web search (Tavily)
-  └── NotebookLM query (optional personal RAG)
-        ↓
-Synthesis Agent writes the full report
-        ↓
-PDF Formatter renders it (text, tables, charts, images)
-        ↓
-Human approval gate (ad-hoc runs only)
-        ↓
-Gmail delivery + local file save
+```mermaid
+flowchart TD
+    A([You provide a topic]) --> B
+
+    subgraph orchestrator["Orchestrator"]
+        B[Decompose into N subtopics]
+    end
+
+    B --> R1 & R2 & RN
+
+    subgraph parallel["N Research Agents — run in parallel"]
+        R1[Research Agent 1]
+        R2[Research Agent 2]
+        RN[Research Agent N]
+    end
+
+    subgraph sources["Sources — per agent"]
+        WS["Web Search (Tavily)"]
+        NB["NotebookLM Query (optional RAG)"]
+    end
+
+    R1 & R2 & RN --> WS & NB
+
+    WS & NB --> S
+
+    subgraph synthesis["Synthesis"]
+        S[Synthesis Agent\nwrites full report]
+        S --> P[PDF Formatter\ntext · tables · charts · images]
+    end
+
+    P --> gate{Ad-hoc run?}
+    gate -- Yes --> H[Human Approval Gate]
+    H -- Approved --> OUT
+    gate -- No / Scheduled --> OUT
+
+    subgraph delivery["Delivery"]
+        OUT[Gmail + local file save]
+    end
 ```
 
 ---
