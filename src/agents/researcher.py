@@ -101,26 +101,41 @@ def run_research_agent(
         # Web search — always
         query = f"{subtopic} latest research 2026"
         web_results = web_search(query, api_key=api_key)
+        web_total_chars = sum(len(r.get("content", "")) for r in web_results)
         _audit({"event": "WEB_SEARCH", "subtopic": subtopic,
-                "query": query, "results_count": len(web_results)})
+                "query": query, "results_count": len(web_results),
+                "total_chars": web_total_chars})
+        if not web_results:
+            _audit({"event": "WEB_SEARCH_EMPTY", "subtopic": subtopic, "query": query,
+                    "warning": "Tavily returned zero results — LLM will have no web sources for this subtopic"})
         sources_text = "\n\n".join(
             f"**{r['title']}** ({r['url']})\n{r['content']}" for r in web_results
         )
 
         # NotebookLM — only if configured
+        notebook_sections = []
         if notebook_ids:
-            notebook_sections = []
             for notebook_id in notebook_ids:
                 try:
                     result = query_notebook(notebook_id, subtopic)
                     notebook_sections.append(f"**{result['name']}** (NotebookLM)\n{result['content']}")
                     _audit({"event": "NOTEBOOKLM_QUERY", "notebook_id": notebook_id,
-                            "subtopic": subtopic})
+                            "subtopic": subtopic, "content_chars": len(result["content"])})
                 except Exception as e:
                     _audit({"event": "NOTEBOOKLM_QUERY_FAILED", "notebook_id": notebook_id,
                             "subtopic": subtopic, "error": str(e)})
             if notebook_sections:
                 sources_text += "\n\n" + "\n\n".join(notebook_sections)
+
+        # Log the combined source package before it enters the LLM prompt —
+        # this confirms both web and NotebookLM content (if any) were assembled.
+        _audit({
+            "event": "SOURCES_COMBINED",
+            "subtopic": subtopic,
+            "web_results_count": len(web_results),
+            "notebooklm_results_count": len(notebook_sections),
+            "total_chars": len(sources_text),
+        })
 
         # Synthesize findings with LLM
         prompt = (
@@ -130,6 +145,9 @@ def run_research_agent(
             f"Write in professional tone. Include key findings, statistics, and insights."
         )
         findings = litellm_complete(model, [{"role": "user", "content": prompt}], max_tokens)
+
+        _audit({"event": "RESEARCH_COMPLETED", "subtopic": subtopic,
+                "findings_chars": len(findings)})
 
         update_subtopic_state(run_id, subtopic_idx, state_dir, {
             "status": "COMPLETED",
