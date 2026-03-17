@@ -1,5 +1,25 @@
 from agents.researcher import litellm_complete
 
+_TITLE_WORD_THRESHOLD = 15   # summarize if topic exceeds this many words
+_TITLE_WORD_LIMIT     = 40   # target max words for the generated title
+
+
+def summarize_title(topic: str, cfg: dict) -> str:
+    """Return a concise report title of ≤ _TITLE_WORD_LIMIT words.
+
+    If the topic is already short enough it is returned unchanged.
+    Otherwise the LLM condenses it into a clean, professional title.
+    """
+    if len(topic.split()) <= _TITLE_WORD_THRESHOLD:
+        return topic
+    model = cfg["agent"]["default_model"]
+    prompt = (
+        f"Write a concise report title of no more than {_TITLE_WORD_LIMIT} words "
+        f"for the following research topic. Return only the title, no quotes:\n\n{topic}"
+    )
+    return litellm_complete(model, [{"role": "user", "content": prompt}], max_tokens=120).strip()
+
+
 _DRY_RUN_EXEC = "## [DRY RUN] Executive Summary\n\nThis is a dry-run stub executive summary."
 _DRY_RUN_BODY = "## [DRY RUN] Full Report\n\nThis is a dry-run stub full report body."
 _SEPARATOR = "---"

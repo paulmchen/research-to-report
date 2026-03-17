@@ -91,6 +91,7 @@ def send_report_email(
     audit_log_path: str,
     run_id: str,
     api_key: str = None,
+    title: str = None,
 ) -> dict:
     if not to_list:
         raise EmailError(
@@ -102,12 +103,13 @@ def send_report_email(
             f"[ERR-EML-004] Email already sent for run {run_id} — duplicate prevented"
         )
 
+    display = title or topic
     try:
         return _send_via_composio(
             to_list=to_list,
             cc_list=cc_list,
-            subject=f"Research Report: {topic}",
-            body=f"Please find attached the research report on: {topic}",
+            subject=f"Research Report: {display}",
+            body=f"Please find attached the research report on: {display}",
             pdf_paths=pdf_paths,
             api_key=api_key,
         )

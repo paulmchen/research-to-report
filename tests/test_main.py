@@ -83,6 +83,35 @@ def test_dry_run_flag_runs_without_api_calls(tmp_path):
     assert result.exit_code == 0, result.output
 
 
+def test_research_generates_title_and_passes_it_to_pdf_and_email(tmp_path):
+    """summarize_title must be called and its result passed to generate_pdf (as
+    data['title']) and send_report_email (as title=)."""
+    from main import cli
+    runner = CliRunner()
+    cfg_path = _write_config(tmp_path)
+    pdf_path = str(tmp_path / "report.pdf")
+
+    with patch("main.run_preflight"), \
+         patch("main.summarize_title", return_value="Short Concise Title") as mock_title, \
+         patch("main.decompose_topic", return_value=["sub A"]), \
+         patch("main.run_parallel_research", return_value={"sub A": "findings"}), \
+         patch("main.synthesize", return_value={"executive_summary": "exec", "full_report": "full"}), \
+         patch("main.generate_pdf", return_value=pdf_path) as mock_pdf, \
+         patch("main.request_approval", return_value="approved"), \
+         patch("main.send_report_email", return_value={"id": "msg-1"}) as mock_send:
+        result = runner.invoke(cli, ["research", "A very long topic " * 5, "--config", cfg_path])
+
+    assert result.exit_code == 0, result.output
+    mock_title.assert_called_once()
+
+    # title must be passed into generate_pdf's data dict
+    pdf_data = mock_pdf.call_args.kwargs.get("data") or mock_pdf.call_args.args[0]
+    assert pdf_data["title"] == "Short Concise Title"
+
+    # title must be passed to send_report_email
+    assert mock_send.call_args.kwargs.get("title") == "Short Concise Title"
+
+
 def test_email_failure_sets_email_failed_state(tmp_path):
     """When email delivery fails, run state must be EMAIL_FAILED (not COMPLETED)."""
     from main import cli

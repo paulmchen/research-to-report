@@ -157,6 +157,52 @@ def test_send_via_composio_raises_when_no_gmail_account(tmp_path):
             )
 
 
+def test_send_report_email_uses_title_for_subject_when_provided(tmp_path):
+    """When a title is supplied, the email subject and body must use it, not the raw topic."""
+    from delivery.email_sender import send_report_email
+
+    audit_log = str(tmp_path / "audit.log")
+    pdf_path = str(tmp_path / "report.pdf")
+    with open(pdf_path, "wb") as f:
+        f.write(b"%PDF fake")
+
+    with patch("delivery.email_sender._send_via_composio") as mock_send:
+        mock_send.return_value = {"id": "msg-1"}
+        send_report_email(
+            pdf_paths=[pdf_path],
+            topic="Conduct a comprehensive industry research report on Agentic AI in manufacturing 2026-2027",
+            title="Agentic AI in Manufacturing 2026-2027",
+            to_list=["a@b.com"], cc_list=[],
+            audit_log_path=audit_log, run_id="run-title-01",
+        )
+
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["subject"] == "Research Report: Agentic AI in Manufacturing 2026-2027"
+    assert "Agentic AI in Manufacturing 2026-2027" in call_kwargs["body"]
+    assert "Conduct a comprehensive" not in call_kwargs["subject"]
+
+
+def test_send_report_email_falls_back_to_topic_when_no_title(tmp_path):
+    """When no title is given, the email subject must use the raw topic."""
+    from delivery.email_sender import send_report_email
+
+    audit_log = str(tmp_path / "audit.log")
+    pdf_path = str(tmp_path / "report.pdf")
+    with open(pdf_path, "wb") as f:
+        f.write(b"%PDF fake")
+
+    with patch("delivery.email_sender._send_via_composio") as mock_send:
+        mock_send.return_value = {"id": "msg-2"}
+        send_report_email(
+            pdf_paths=[pdf_path], topic="AI trends",
+            to_list=["a@b.com"], cc_list=[],
+            audit_log_path=audit_log, run_id="run-title-02",
+        )
+
+    call_kwargs = mock_send.call_args.kwargs
+    assert call_kwargs["subject"] == "Research Report: AI trends"
+
+
 def test_send_via_composio_raises_on_missing_api_key(tmp_path):
     """_send_via_composio raises EmailError when no API key is available."""
     from delivery.email_sender import _send_via_composio, EmailError

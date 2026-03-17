@@ -71,6 +71,39 @@ def test_generate_pdf_very_long_topic_does_not_crash(tmp_path):
     assert os.path.getsize(output_path) > 1024
 
 
+def test_generate_pdf_uses_title_field_for_filename_when_provided(tmp_path):
+    """When data contains a 'title' key, the PDF filename must be based on the
+    title, not the (potentially very long) raw topic string."""
+    from pdf.formatter import generate_pdf
+    data = {
+        "topic": "Conduct a comprehensive industry research report on Agentic AI in manufacturing 2026-2027",
+        "title": "Agentic AI in Manufacturing 2026-2027",
+        "run_id": "2026-03-17T10-00-00",
+        "executive_summary": "## Summary\n\nKey findings.",
+        "full_report": "## Report\n\nDetailed findings.",
+        "generated_at": "2026-03-17T10:00:00Z",
+    }
+    output_path = generate_pdf(data, output_dir=str(tmp_path))
+    filename = os.path.basename(output_path)
+    assert "agentic-ai-in-manufacturing" in filename
+    # raw topic slug should NOT appear in the filename
+    assert "conduct-a-comprehensive" not in filename
+
+
+def test_generate_pdf_falls_back_to_topic_when_no_title(tmp_path):
+    """When no 'title' key is present, the filename must fall back to the topic."""
+    from pdf.formatter import generate_pdf
+    data = {
+        "topic": "AI trends",
+        "run_id": "2026-03-17T10-00-01",
+        "executive_summary": "## Summary\n\nFindings.",
+        "full_report": "## Report\n\nDetails.",
+        "generated_at": "2026-03-17T10:00:00Z",
+    }
+    output_path = generate_pdf(data, output_dir=str(tmp_path))
+    assert "ai-trends" in os.path.basename(output_path)
+
+
 def test_generate_pdf_oversized_table_cell_does_not_crash(tmp_path):
     """A markdown table whose cell exceeds _MAX_CELL_CHARS must not crash PDF generation."""
     from pdf.formatter import generate_pdf

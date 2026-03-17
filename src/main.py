@@ -11,7 +11,7 @@ from log.logger import setup_loggers, write_audit
 from run.preflight import run_preflight, PreflightError, merge_recipients, validate_emails
 from agents.orchestrator import decompose_topic, run_parallel_research, OrchestratorError
 from agents.researcher import LLMError
-from agents.synthesizer import synthesize, SynthesisError
+from agents.synthesizer import synthesize, summarize_title, SynthesisError
 from pdf.formatter import generate_pdf, PDFError
 from pdf.translator import generate_translation
 from delivery.email_sender import send_report_email, EmailError
@@ -81,6 +81,8 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
     create_master_state(run_id, topic, "ad-hoc", state_dir)
 
     try:
+        title = summarize_title(topic, cfg) if not dry_run else topic
+
         click.echo(f"Decomposing topic: {topic}")
         subtopics = decompose_topic(topic, cfg) if not dry_run else ["Subtopic A (dry run)", "Subtopic B (dry run)"]
 
@@ -94,7 +96,7 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
         report = synthesize(topic, findings, cfg, dry_run=dry_run)
 
         report_data = {
-            "topic": topic, "run_id": run_id,
+            "topic": topic, "title": title, "run_id": run_id,
             "executive_summary": report["executive_summary"],
             "full_report": report["full_report"],
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -125,8 +127,9 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
             except Exception as e:
                 click.echo(f"Warning: {lang} translation failed — {e}", err=True)
 
-        # Save PDF paths to state so resume can re-attempt delivery if email fails
+        # Save PDF paths and display title to state so resume can re-attempt delivery
         update_master_state(run_id, state_dir, {
+            "title": title,
             "pdf": {"status": "COMPLETED", "files": all_pdf_paths},
         })
 
@@ -145,7 +148,7 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
 
     if decision == "approved":
         try:
-            send_report_email(all_pdf_paths, topic, to_list, cc_list, audit_path, run_id)
+            send_report_email(all_pdf_paths, topic, to_list, cc_list, audit_path, run_id, title=title)
             write_audit(audit_path, {"event": "EMAIL_SENT", "run_id": run_id,
                                       "to": to_list, "cc": cc_list})
             update_master_state(run_id, state_dir, {"status": "COMPLETED",
@@ -215,11 +218,12 @@ def resume_cmd(config_path):
             cc_list  = cfg["email"].get("default_cc", [])
             run_id   = run["run_id"]
             topic    = run["topic"]
+            title    = run.get("title") or topic
 
             decision = request_approval(topic, to_list, cc_list, pdf_files)
             if decision == "approved":
                 try:
-                    send_report_email(pdf_files, topic, to_list, cc_list, audit_path, run_id)
+                    send_report_email(pdf_files, topic, to_list, cc_list, audit_path, run_id, title=title)
                     write_audit(audit_path, {"event": "EMAIL_SENT", "run_id": run_id,
                                               "to": to_list, "cc": cc_list})
                     update_master_state(run_id, state_dir, {"status": "COMPLETED",

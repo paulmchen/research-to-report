@@ -47,6 +47,32 @@ def test_synthesize_empty_result_raises_syn001():
             synthesize("topic", findings, make_syn_cfg())
 
 
+def test_summarize_title_returns_topic_unchanged_when_short():
+    from agents.synthesizer import summarize_title
+    short_topic = "AI trends in healthcare"  # 4 words — under threshold
+    with patch("agents.synthesizer.litellm_complete") as mock_llm:
+        result = summarize_title(short_topic, make_syn_cfg())
+    mock_llm.assert_not_called()
+    assert result == short_topic
+
+
+def test_summarize_title_calls_llm_when_topic_is_long():
+    from agents.synthesizer import summarize_title
+    long_topic = " ".join(["word"] * 20)  # 20 words — exceeds threshold
+    with patch("agents.synthesizer.litellm_complete", return_value="Concise AI Report Title") as mock_llm:
+        result = summarize_title(long_topic, make_syn_cfg())
+    mock_llm.assert_called_once()
+    assert result == "Concise AI Report Title"
+
+
+def test_summarize_title_strips_whitespace():
+    from agents.synthesizer import summarize_title
+    long_topic = " ".join(["word"] * 20)
+    with patch("agents.synthesizer.litellm_complete", return_value="  Title With Spaces  "):
+        result = summarize_title(long_topic, make_syn_cfg())
+    assert result == "Title With Spaces"
+
+
 def test_synthesize_prompt_includes_chart_instruction():
     from agents.synthesizer import synthesize
     from unittest.mock import patch

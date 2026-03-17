@@ -546,7 +546,7 @@ def generate_pdf(data: dict, output_dir: str) -> str:
     except OSError as e:
         raise PDFError(f'[ERR-PDF-002] Output directory not writable: {output_dir} — {e}')
 
-    topic     = data['topic']
+    topic     = data.get('title') or data['topic']
     run_id    = data['run_id']
     timestamp = data.get('generated_at', datetime.now(timezone.utc).isoformat())
     filename  = f'{_slug(topic)}-{run_id[:10]}.pdf'

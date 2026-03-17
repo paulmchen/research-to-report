@@ -309,7 +309,7 @@ def generate_translation(data: dict, language: str, output_dir: str,
     if language not in ("zh-CN", "zh-TW"):
         raise ValueError(f"Unsupported language: {language}. Use zh-CN or zh-TW.")
 
-    topic   = data["topic"]
+    topic   = data.get("title") or data["topic"]
     run_id  = data["run_id"]
     exec_md = data.get("executive_summary", "")
     full_md = data.get("full_report", "")
