@@ -73,7 +73,8 @@ def _make_composio_mock(response: dict):
 
 
 def test_send_via_composio_execute_call(tmp_path):
-    """_send_via_composio passes correct args to tools.execute() with no dangerously_skip_version_check."""
+    """_send_via_composio pre-populates _tool_schemas then calls tools.execute()
+    so that substitute_file_uploads converts the attachment path correctly."""
     from delivery.email_sender import _send_via_composio
 
     pdf_path = str(tmp_path / "report.pdf")
@@ -93,6 +94,9 @@ def test_send_via_composio_execute_call(tmp_path):
             pdf_paths=[pdf_path],
             api_key="fake-key",
         )
+
+    # Schema pre-population: retrieve must have been called to fetch the tool schema
+    mock_composio._client.tools.retrieve.assert_called_once_with(tool_slug="GMAIL_SEND_EMAIL")
 
     mock_composio.tools.execute.assert_called_once_with(
         slug="GMAIL_SEND_EMAIL",

@@ -55,3 +55,24 @@ def test_find_incomplete_runs(tmp_path):
     runs = find_incomplete_runs(state_dir)
     assert len(runs) == 2
     assert any(r["run_id"] == "run-001" for r in runs)
+
+
+def test_find_incomplete_runs_includes_email_failed(tmp_path):
+    from log.state import create_master_state, update_master_state, find_incomplete_runs
+    state_dir = str(tmp_path / "state")
+    create_master_state("run-email-fail", "topic", "ad-hoc", state_dir)
+    update_master_state("run-email-fail", state_dir, {"status": "EMAIL_FAILED"})
+    runs = find_incomplete_runs(state_dir)
+    assert len(runs) == 1
+    assert runs[0]["run_id"] == "run-email-fail"
+
+
+def test_find_incomplete_runs_excludes_completed_and_failed(tmp_path):
+    from log.state import create_master_state, update_master_state, find_incomplete_runs
+    state_dir = str(tmp_path / "state")
+    create_master_state("run-done", "topic", "ad-hoc", state_dir)
+    update_master_state("run-done", state_dir, {"status": "COMPLETED"})
+    create_master_state("run-fail", "topic", "ad-hoc", state_dir)
+    update_master_state("run-fail", state_dir, {"status": "FAILED"})
+    runs = find_incomplete_runs(state_dir)
+    assert runs == []

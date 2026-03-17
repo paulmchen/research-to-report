@@ -125,6 +125,11 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
             except Exception as e:
                 click.echo(f"Warning: {lang} translation failed — {e}", err=True)
 
+        # Save PDF paths to state so resume can re-attempt delivery if email fails
+        update_master_state(run_id, state_dir, {
+            "pdf": {"status": "COMPLETED", "files": all_pdf_paths},
+        })
+
     except (OrchestratorError, SynthesisError, PDFError, LLMError) as e:
         click.echo(str(e), err=True)
         update_master_state(run_id, state_dir, {"status": "FAILED"})
@@ -143,14 +148,21 @@ def research(topic, cli_to, cli_cc, dry_run, log_level, config_path):
             send_report_email(all_pdf_paths, topic, to_list, cc_list, audit_path, run_id)
             write_audit(audit_path, {"event": "EMAIL_SENT", "run_id": run_id,
                                       "to": to_list, "cc": cc_list})
+            update_master_state(run_id, state_dir, {"status": "COMPLETED",
+                                                     "email": {"status": "COMPLETED"}})
+            write_audit(audit_path, {"event": "RUN_COMPLETED", "run_id": run_id, "status": "success"})
             click.echo("Email sent successfully.")
         except EmailError as e:
             click.echo(str(e), err=True)
+            update_master_state(run_id, state_dir, {"status": "EMAIL_FAILED",
+                                                     "email": {"status": "FAILED",
+                                                                "error": str(e)}})
+            click.echo("PDF is saved locally. Run 'research-report resume' to retry delivery.")
     else:
         click.echo("Email skipped. PDF saved locally.")
-
-    update_master_state(run_id, state_dir, {"status": "COMPLETED"})
-    write_audit(audit_path, {"event": "RUN_COMPLETED", "run_id": run_id, "status": "success"})
+        update_master_state(run_id, state_dir, {"status": "COMPLETED",
+                                                 "email": {"status": "SKIPPED"}})
+        write_audit(audit_path, {"event": "RUN_COMPLETED", "run_id": run_id, "status": "success"})
 
 
 @cli.command()
@@ -180,6 +192,7 @@ def resume_cmd(config_path):
         click.echo(str(e), err=True)
         sys.exit(1)
 
+    audit_path = cfg["audit"]["log_file"]
     state_dir = os.path.join(cfg["output_dir"], "state")
     runs = find_incomplete_runs(state_dir)
 
@@ -191,6 +204,38 @@ def resume_cmd(config_path):
     for run in runs:
         click.echo(f"  Found: {run['run_id']} — \"{run['topic']}\" ({run['status']})")
         display_run_summary(run)
+
+        if run["status"] == "EMAIL_FAILED":
+            pdf_files = run.get("pdf", {}).get("files", [])
+            if not pdf_files:
+                click.echo("  No PDF paths recorded — cannot retry delivery.", err=True)
+                continue
+
+            to_list  = cfg["email"].get("default_recipients", [])
+            cc_list  = cfg["email"].get("default_cc", [])
+            run_id   = run["run_id"]
+            topic    = run["topic"]
+
+            decision = request_approval(topic, to_list, cc_list, pdf_files)
+            if decision == "approved":
+                try:
+                    send_report_email(pdf_files, topic, to_list, cc_list, audit_path, run_id)
+                    write_audit(audit_path, {"event": "EMAIL_SENT", "run_id": run_id,
+                                              "to": to_list, "cc": cc_list})
+                    update_master_state(run_id, state_dir, {"status": "COMPLETED",
+                                                             "email": {"status": "COMPLETED"}})
+                    write_audit(audit_path, {"event": "RUN_COMPLETED", "run_id": run_id,
+                                              "status": "success"})
+                    click.echo("Email sent successfully.")
+                except EmailError as e:
+                    click.echo(str(e), err=True)
+                    update_master_state(run_id, state_dir, {"status": "EMAIL_FAILED",
+                                                             "email": {"status": "FAILED",
+                                                                        "error": str(e)}})
+            else:
+                click.echo("Email skipped. PDF remains saved locally.")
+            continue
+
         decision = choose_resume_option(run)
         click.echo(f"Action: {decision['action']}")
 

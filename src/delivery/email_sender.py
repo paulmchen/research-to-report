@@ -54,6 +54,14 @@ def _send_via_composio(
             "Connect your Gmail account at app.composio.dev → Apps → Gmail → Connect."
         )
 
+    # composio 1.0.0rc10 bug: tools.execute() raises KeyError on the slug for
+    # any non-custom tool because it does _custom_tools[slug] (bare dict access)
+    # before the API retrieve fallback. Pre-populating _tool_schemas skips that
+    # broken path while keeping substitute_file_uploads() active — which is
+    # required to convert the attachment path into a FileUploadable the API accepts.
+    composio.tools._tool_schemas["GMAIL_SEND_EMAIL"] = (
+        composio._client.tools.retrieve(tool_slug="GMAIL_SEND_EMAIL")
+    )
     response = composio.tools.execute(
         slug="GMAIL_SEND_EMAIL",
         arguments={
