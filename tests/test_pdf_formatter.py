@@ -48,3 +48,41 @@ def test_placeholder_box_contains_message():
     from pdf.formatter import _placeholder_box
     result = _placeholder_box("Image unavailable: my image")
     assert result is not None
+
+
+def test_generate_pdf_very_long_topic_does_not_crash(tmp_path):
+    """A topic longer than _COVER_TITLE_MAX must not crash PDF generation."""
+    from pdf.formatter import generate_pdf
+    long_topic = (
+        "Conduct a comprehensive industry research report on the emergence and trajectory "
+        "of Agentic AI and autonomous multi-agent systems in the manufacturing sector for "
+        "2026–2027. The report should cover multi-agent orchestration, skills ecosystems, "
+        "autonomous decision-making pipelines, and strategic recommendations for leaders."
+    )
+    data = {
+        "topic": long_topic,
+        "run_id": "2026-03-17T10-00-00",
+        "executive_summary": "## Summary\n\nKey findings here.",
+        "full_report": "## Report\n\nDetailed findings here.",
+        "generated_at": "2026-03-17T10:00:00Z",
+    }
+    output_path = generate_pdf(data, output_dir=str(tmp_path))
+    assert os.path.exists(output_path)
+    assert os.path.getsize(output_path) > 1024
+
+
+def test_generate_pdf_oversized_table_cell_does_not_crash(tmp_path):
+    """A markdown table whose cell exceeds _MAX_CELL_CHARS must not crash PDF generation."""
+    from pdf.formatter import generate_pdf
+    long_cell = "word " * 200   # 1000 chars — far above the 400-char threshold
+    full_report = f"## Report\n\n| Header |\n|--------|\n| {long_cell} |\n\nMore text."
+    data = {
+        "topic": "AI trends",
+        "run_id": "2026-03-17T10-00-01",
+        "executive_summary": "## Summary\n\nKey findings.",
+        "full_report": full_report,
+        "generated_at": "2026-03-17T10:00:00Z",
+    }
+    output_path = generate_pdf(data, output_dir=str(tmp_path))
+    assert os.path.exists(output_path)
+    assert os.path.getsize(output_path) > 1024

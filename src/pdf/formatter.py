@@ -487,11 +487,15 @@ def _strip_leading_h1(text: str) -> str:
     return text
 
 
+_COVER_TITLE_MAX = 120  # chars — beyond this a cover title overflows a page frame
+
+
 def _cover(topic: str, timestamp: str, s: dict) -> list:
     """Navy Table header — self-sizing, so long titles never overlap."""
+    display_topic = topic if len(topic) <= _COVER_TITLE_MAX else topic[:_COVER_TITLE_MAX - 1] + '…'
     tbl = Table(
         [
-            [Paragraph(topic, s['cover_title'])],
+            [Paragraph(display_topic, s['cover_title'])],
             [Spacer(1, 0.15 * inch)],
             [Paragraph('Research Report', s['cover_subtitle'])],
         ],
