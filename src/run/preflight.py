@@ -1,6 +1,11 @@
 import os
 import re
 import socket
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore", category=UserWarning, module="composio_client")
+    from composio.sdk import Composio
 
 
 class PreflightError(Exception):
@@ -83,7 +88,61 @@ def check_output_dirs(cfg: dict) -> None:
             raise PreflightError(f"[ERR-PDF-002] Output directory not writable: {path} — {e}")
 
 
+def check_composio_gmail(cfg: dict) -> None:
+    """Verify the Composio Gmail OAuth connection is active before research starts.
+
+    The Composio API key itself does not expire, but the Gmail OAuth link inside
+    Composio can become invalid (user revokes Google access, token expiry, or
+    disconnect via the Composio dashboard). This check catches that early without
+    sending any email — it only lists connected accounts.
+    """
+    api_key = os.environ.get("COMPOSIO_API_KEY")
+    if not api_key:
+        return  # check_api_keys already caught the missing key case
+
+    try:
+        composio = Composio(api_key=api_key)
+        accounts = composio._client.connected_accounts.list()
+        gmail_account = next(
+            (a for a in accounts.items if a.toolkit.slug == "gmail" and a.status == "ACTIVE"),
+            None,
+        )
+    except Exception as e:
+        raise PreflightError(
+            f"[ERR-AUTH-008] Composio API key is invalid or unreachable: {e}\n"
+            "  Verify your COMPOSIO_API_KEY at app.composio.dev."
+        )
+
+    if gmail_account is None:
+        raise PreflightError(
+            "[ERR-AUTH-008] No active Gmail connection found in Composio.\n"
+            "  Connect your Gmail account at app.composio.dev → Apps → Gmail → Connect."
+        )
+
+
+def check_notebooklm(cfg: dict) -> None:
+    notebook_ids = cfg.get("notebooklm", {}).get("notebook_ids", [])
+    if not notebook_ids:
+        return
+    from tools.notebooklm_reader import verify_notebooklm_auth, ToolError
+    try:
+        verify_notebooklm_auth(notebook_ids)
+    except ToolError as e:
+        msg = str(e)
+        if "ERR-AUTH-009" in msg:
+            raise PreflightError(
+                "[ERR-AUTH-009] NotebookLM authentication has expired.\n"
+                "  Run 'nlm login' in your terminal to re-authenticate, then retry."
+            )
+        raise PreflightError(
+            f"[ERR-NTB-003] NotebookLM preflight check failed: {e}\n"
+            "  Ensure 'uvx install notebooklm-mcp-cli' has been run and 'nlm login' is up to date."
+        )
+
+
 def run_preflight(cfg: dict) -> None:
     check_network(cfg)
     check_api_keys(cfg)
     check_output_dirs(cfg)
+    check_composio_gmail(cfg)
+    check_notebooklm(cfg)

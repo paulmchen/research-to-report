@@ -534,7 +534,7 @@ Structured JSON, one entry per line, append-only. Records every external action:
 {"timestamp": "2026-03-12T08:00:03Z", "event": "WEB_SEARCH", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "subtopic": "AI healthcare market trends", "query": "AI healthcare market trends latest research 2026", "results_count": 5}
 {"timestamp": "2026-03-12T08:00:05Z", "event": "WEB_SEARCH", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 2, "subtopic": "regulatory landscape", "query": "regulatory landscape latest research 2026", "results_count": 4}
 {"timestamp": "2026-03-12T08:00:10Z", "event": "NOTEBOOKLM_QUERY", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 1, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "AI healthcare market trends"}
-{"timestamp": "2026-03-12T08:00:12Z", "event": "NOTEBOOKLM_QUERY_FAILED", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 2, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "regulatory landscape", "error": "[ERR-NTB-003] NotebookLM MCP server error: browser session expired"}
+{"timestamp": "2026-03-12T08:00:12Z", "event": "NOTEBOOKLM_QUERY_FAILED", "run_id": "2026-03-12T08-00-01", "subtopic_idx": 2, "notebook_id": "176a5e31-0401-4f09-9c89-4229c7d6a668", "subtopic": "regulatory landscape", "error": "[ERR-AUTH-009] NotebookLM authentication expired. Run 'nlm login' in your terminal to re-authenticate."}
 {"timestamp": "2026-03-12T08:00:45Z", "event": "REPORT_GENERATED", "filename": "2026-03-12-ai-healthcare.pdf", "size_kb": 284}
 {"timestamp": "2026-03-12T08:00:46Z", "event": "APPROVAL_REQUESTED", "mode": "ad-hoc"}
 {"timestamp": "2026-03-12T08:01:02Z", "event": "APPROVAL_DECISION", "decision": "approved", "wait_time_sec": 16}
@@ -562,12 +562,15 @@ Warning [WRN-CFG-006]: Audit logging cannot be disabled. Agent actions will alwa
 ```
 1. Network connectivity          → fast-fail before anything else
 2. API key validation            → ANTHROPIC_API_KEY, TAVILY_API_KEY, COMPOSIO_API_KEY always required; model-provider keys checked only if that model is configured
-3. config.yaml validation        → cron format, timezone, required fields, supported languages
-4. Output directory writable     → reports/, reports/logs/, reports/state/
-5. Begin research
+3. Output directory writable     → reports/, reports/logs/, reports/state/
+4. Composio Gmail connection     → verifies an active Gmail OAuth connection exists in Composio (calls connected_accounts.list(); no email sent); raises ERR-AUTH-008 if missing or API key rejected
+5. NotebookLM auth check         → only when notebooklm.notebook_ids is non-empty: sends a lightweight ping query to the first notebook via the MCP server; raises ERR-AUTH-009 if the Chrome session has expired with instruction to run 'nlm login'
+6. Begin research
 ```
 
-When `notebooklm.notebook_ids` is non-empty, the `notebooklm-mcp-cli` MCP server must already be running (started separately). No additional API key is required — authentication is via the Chrome browser session managed by the MCP server.
+When the `COMPOSIO_API_KEY` is set, `run_preflight()` calls `check_composio_gmail(cfg)` which creates a Composio client and calls `connected_accounts.list()` to verify there is an active Gmail OAuth connection. This catches a disconnected or revoked Gmail OAuth link before any research runs — the Composio API key itself does not expire, but the Gmail OAuth connection can be silently revoked (user disconnects via app.composio.dev, or Google invalidates the OAuth token). Both a missing Gmail connection and a rejected API key raise `PreflightError([ERR-AUTH-008])`.
+
+When `notebooklm.notebook_ids` is non-empty, `run_preflight()` calls `check_notebooklm(cfg)` which invokes `verify_notebooklm_auth(notebook_ids)` from `notebooklm_reader.py`. This sends a ping query to the first configured notebook via the MCP server and raises `PreflightError([ERR-AUTH-009])` with a clear `nlm login` instruction if the session has expired. MCP server startup failures surface as `PreflightError([ERR-NTB-003])`.
 
 **Pre-flight output example:**
 ```
@@ -621,11 +624,12 @@ Format: `[PREFIX-CAT-NNN]` where CAT is the category and NNN is a three-digit nu
 | AUTH-001 | Missing .env file |
 | AUTH-002 | Invalid Anthropic API key |
 | AUTH-003 | Invalid or expired Tavily API key |
-| AUTH-004 | NotebookLM MCP server unreachable or not running |
+| AUTH-004 | Reserved (superseded by AUTH-009 and NTB-003) |
 | AUTH-005 | LLM API rate limit exceeded — automatically retried up to 3 times (15s / 30s / 60s backoff) before raising |
 | AUTH-006 | LiteLLM provider API key missing for configured model |
 | AUTH-007 | Configured model name not recognised by LiteLLM |
-| AUTH-008 | COMPOSIO_API_KEY missing or no active Gmail connection in Composio |
+| AUTH-008 | COMPOSIO_API_KEY missing or invalid; or no active Gmail OAuth connection found in Composio — reconnect at app.composio.dev → Apps → Gmail |
+| AUTH-009 | NotebookLM Chrome session expired — run `nlm login` to re-authenticate |
 
 #### CFG — Configuration
 | Code | Description |
@@ -677,7 +681,7 @@ Format: `[PREFIX-CAT-NNN]` where CAT is the category and NNN is a three-digit nu
 |---|---|
 | NTB-001 | NotebookLM notebook not found (invalid notebook UUID) |
 | NTB-002 | No readable sources in notebook |
-| NTB-003 | NotebookLM MCP server error (browser session may have expired — re-login required) |
+| NTB-003 | NotebookLM MCP server error (subprocess crash, connection failure, or unexpected tool error) |
 
 #### STA — State Management
 | Code | Description |
@@ -806,6 +810,16 @@ Dry-run Mode
 | `test_no_recipients_raises_eml005` | Empty TO list raises ERR-EML-005 |
 | `test_notebooklm_configured_no_google_credentials_needed` | NotebookLM via MCP requires no Google credentials |
 | `test_composio_api_key_required` | Missing COMPOSIO_API_KEY raises ERR-AUTH-008 |
+| `test_check_composio_gmail_passes_when_gmail_connected` | No error raised when an active Gmail connection exists in Composio |
+| `test_check_composio_gmail_raises_when_no_gmail_connection` | No active Gmail account raises ERR-AUTH-008 with app.composio.dev hint |
+| `test_check_composio_gmail_raises_on_invalid_api_key` | Composio API key rejected by the server raises ERR-AUTH-008 |
+| `test_check_composio_gmail_skipped_when_no_api_key` | `check_composio_gmail` is a no-op when `COMPOSIO_API_KEY` is not set |
+| `test_run_preflight_calls_check_composio_gmail` | `run_preflight()` invokes `check_composio_gmail` so the Gmail connection is verified before research |
+| `test_check_notebooklm_skipped_when_no_notebook_ids` | `check_notebooklm` is a no-op when `notebook_ids` is empty |
+| `test_check_notebooklm_passes_when_auth_valid` | No error raised when `verify_notebooklm_auth` succeeds |
+| `test_check_notebooklm_raises_preflight_error_on_auth_expired` | Expired auth surfaces as `PreflightError` ERR-AUTH-009 with `nlm login` hint |
+| `test_check_notebooklm_raises_preflight_error_on_server_failure` | MCP server startup failure surfaces as `PreflightError` ERR-NTB-003 |
+| `test_run_preflight_calls_check_notebooklm` | `run_preflight()` invokes `check_notebooklm` so auth is verified before research |
 
 #### `tests/test_orchestrator.py`
 | Test | Goal |
@@ -845,6 +859,14 @@ Dry-run Mode
 | `test_notebooklm_reader_raises_on_permission_denied` | MCP connection failure raises ERR-NTB-003 |
 | `test_fetch_notebook_image_returns_none_on_error` | Any MCP error from `fetch_notebook_image()` returns None, never raises |
 | `test_fetch_notebook_image_returns_bytes_on_success` | Successful MCP response returns raw image bytes |
+| `test_notebooklm_reader_unwraps_exception_group_to_ntb003` | `ExceptionGroup` from asyncio `TaskGroup` is unwrapped; inner error message used for ERR-NTB-003 |
+| `test_notebooklm_reader_unwraps_exception_group_to_ntb001` | `ExceptionGroup` wrapping a "not found" error maps to ERR-NTB-001 |
+| `test_unwrap_exception_group_returns_innermost` | `_unwrap_exception_group()` recurses through nested `ExceptionGroup`s to the innermost exception |
+| `test_verify_notebooklm_auth_skips_when_no_ids` | `verify_notebooklm_auth([])` is a no-op |
+| `test_verify_notebooklm_auth_passes_when_ping_succeeds` | No error raised when ping succeeds |
+| `test_verify_notebooklm_auth_raises_auth_error_on_expired_session` | Expired session raises ERR-AUTH-009 with `nlm login` hint |
+| `test_verify_notebooklm_auth_raises_ntb003_on_server_failure` | MCP startup failure raises ERR-NTB-003 |
+| `test_verify_notebooklm_auth_unwraps_exception_group_auth_error` | `ExceptionGroup` wrapping auth error surfaces as ERR-AUTH-009 |
 
 #### `tests/test_pdf_formatter.py`
 | Test | Goal |
