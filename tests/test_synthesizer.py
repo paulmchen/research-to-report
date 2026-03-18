@@ -73,6 +73,27 @@ def test_summarize_title_strips_whitespace():
     assert result == "Title With Spaces"
 
 
+def test_summarize_title_uses_configured_word_limit():
+    from agents.synthesizer import summarize_title
+    long_topic = " ".join(["word"] * 20)
+    cfg = {"agent": {"default_model": "claude-sonnet-4-6", "max_tokens": 8096, "title_word_limit": 10}}
+    with patch("agents.synthesizer.litellm_complete") as mock_llm:
+        mock_llm.return_value = "Short Title"
+        summarize_title(long_topic, cfg)
+    prompt = mock_llm.call_args[0][1][0]["content"]
+    assert "10 words" in prompt
+
+
+def test_summarize_title_falls_back_to_default_word_limit_when_not_configured():
+    from agents.synthesizer import summarize_title, _TITLE_WORD_LIMIT
+    long_topic = " ".join(["word"] * 20)
+    with patch("agents.synthesizer.litellm_complete") as mock_llm:
+        mock_llm.return_value = "Default Title"
+        summarize_title(long_topic, make_syn_cfg())
+    prompt = mock_llm.call_args[0][1][0]["content"]
+    assert f"{_TITLE_WORD_LIMIT} words" in prompt
+
+
 def test_synthesize_prompt_includes_chart_instruction():
     from agents.synthesizer import synthesize
     from unittest.mock import patch

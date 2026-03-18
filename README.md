@@ -346,6 +346,7 @@ Edit `config.yaml` to control agent behaviour. Key settings:
 | -------------------------- | ------------------- | --------------------------------------------------------- |
 | `agent.default_model`      | `claude-sonnet-4-6` | Any LiteLLM-supported model (Claude, Gemini, GPT-4, etc.) |
 | `agent.max_subtopics`      | `5`                 | Number of parallel research agents to spawn               |
+| `agent.title_word_limit`   | `40`                | Target max words for the generated report title           |
 | `languages`                | `[en]`              | Report language versions to generate                      |
 | `notebooklm.notebook_ids`  | `[]`                | Leave empty for web-only research                         |
 | `schedule.enabled`         | `false`             | Set`true` to enable cron runs                             |
