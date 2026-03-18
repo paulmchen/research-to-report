@@ -11,6 +11,7 @@ agent:
   default_model: claude-sonnet-4-6
   max_tokens: 8096
   max_subtopics: 5          # number of parallel research agents to spawn
+  title_word_limit: 40      # target max words for the generated report title
 
 email:
   default_recipients:
