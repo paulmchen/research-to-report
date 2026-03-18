@@ -1,3 +1,4 @@
+import datetime
 import os
 import threading
 import time
@@ -99,7 +100,7 @@ def run_research_agent(
         api_key = os.environ.get("TAVILY_API_KEY")
 
         # Web search — always
-        query = f"{subtopic} latest research 2026"
+        query = f"{subtopic} latest research {datetime.date.today().year}"
         web_results = web_search(query, api_key=api_key)
         web_total_chars = sum(len(r.get("content", "")) for r in web_results)
         _audit({"event": "WEB_SEARCH", "subtopic": subtopic,
