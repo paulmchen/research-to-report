@@ -442,6 +442,7 @@ agent:
   default_model: claude-sonnet-4-6    # used by all agents unless overridden
   max_tokens: 8096                    # covers full report generation (~6,000–7,000 tokens for synthesis)
   max_subtopics: 5                    # number of parallel research agents to spawn (default: 5)
+  title_word_limit: 40               # target max words for the generated report title (default: 40)
 
   # optional per-agent overrides — only specify if different from default_model
   # orchestrator_model: claude-opus-4-6

@@ -5,16 +5,17 @@ _TITLE_WORD_LIMIT     = 40   # target max words for the generated title
 
 
 def summarize_title(topic: str, cfg: dict) -> str:
-    """Return a concise report title of ≤ _TITLE_WORD_LIMIT words.
+    """Return a concise report title within the configured word limit.
 
     If the topic is already short enough it is returned unchanged.
     Otherwise the LLM condenses it into a clean, professional title.
     """
+    word_limit = cfg["agent"].get("title_word_limit", _TITLE_WORD_LIMIT)
     if len(topic.split()) <= _TITLE_WORD_THRESHOLD:
         return topic
     model = cfg["agent"]["default_model"]
     prompt = (
-        f"Write a concise report title of no more than {_TITLE_WORD_LIMIT} words "
+        f"Write a concise report title of no more than {word_limit} words "
         f"for the following research topic. Return only the title, no quotes:\n\n{topic}"
     )
     return litellm_complete(model, [{"role": "user", "content": prompt}], max_tokens=120).strip()
