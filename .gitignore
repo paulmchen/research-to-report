@@ -6,3 +6,4 @@ reports/state/*.json
 reports/*.pdf
 .VSCodeCounter/
 config.yaml
+src/*.egg-info/
