@@ -1,7 +1,0 @@
-agents
-config
-delivery
-log
-pdf
-run
-tools
