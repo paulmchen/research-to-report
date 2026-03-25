@@ -1,6 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /C/Users/ladmin/Documents/my_workspace/research-to-report/tests/*.py)",
+      "Bash(grep -l \"charts\\\\|images\" /C/Users/ladmin/Documents/my_workspace/research-to-report/docs/plans/*.md)",
+      "Bash(pytest tests/ -v --collect-only)",
+      "Bash(find . -name \"*.py\" -type f -exec wc -l {} +)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "connect-apps"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
