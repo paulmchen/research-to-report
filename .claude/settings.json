@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest tests/ -v --collect-only)",
+      "Bash(pytest tests/ -v)",
+      "Bash(pytest tests/*.py -v)",
+      "Bash(find . -name \"*.py\" -type f -exec wc -l {} +)"
+    ]
+  }
+}
